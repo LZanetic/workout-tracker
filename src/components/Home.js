@@ -36,9 +36,25 @@ const Home = () => {
     <div className="min-h-screen bg-gray-50 p-4">
       <div className="max-w-4xl mx-auto">
         <div className="bg-white rounded-lg shadow-lg p-6 md:p-8">
-          <h1 className="text-3xl font-bold text-gray-800 mb-2 text-center">
-            Workout Tracker
-          </h1>
+          <div className="flex justify-between items-center mb-4">
+            <h1 className="text-3xl font-bold text-gray-800">
+              Workout Tracker
+            </h1>
+            <div className="flex gap-2">
+              <Link
+                to="/blocks"
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium transition-colors"
+              >
+                Blocks
+              </Link>
+              <Link
+                to="/history"
+                className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 font-medium transition-colors"
+              >
+                History
+              </Link>
+            </div>
+          </div>
           <p className="text-gray-600 text-center mb-8">
             Upload your workout CSV file to get started
           </p>
