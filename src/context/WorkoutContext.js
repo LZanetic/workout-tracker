@@ -1,4 +1,5 @@
 import { createContext, useContext, useState } from 'react';
+import { getWorkoutsByDay } from '../utils/workoutStorage';
 
 const WorkoutContext = createContext();
 
@@ -12,7 +13,10 @@ export const useWorkout = () => {
 
 export const WorkoutProvider = ({ children }) => {
   // Legacy support for old day-based structure
-  const [workoutsByDay, setWorkoutsByDay] = useState(null);
+  // Load from localStorage on initialization
+  const [workoutsByDay, setWorkoutsByDay] = useState(() => {
+    return getWorkoutsByDay();
+  });
   
   // New block-based structure
   const [currentBlock, setCurrentBlock] = useState(null);

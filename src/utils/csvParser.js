@@ -1,5 +1,7 @@
 /**
  * Parses a CSV string and returns an array of workout objects grouped by day
+ * Uses the same header structure as block CSV: Day,Exercise,Sets,Reps,BaseLoadMin,BaseLoadMax,RPE
+ * Converts BaseLoadMin/BaseLoadMax to LoadMin/LoadMax for legacy system
  * @param {string} csvText - The CSV file content as text
  * @returns {Object} - Object with days as keys and arrays of exercises as values
  */
@@ -12,8 +14,8 @@ export const parseCSV = (csvText) => {
   // Parse header
   const headers = lines[0].split(',').map(h => h.trim());
   
-  // Expected headers: Day,Exercise,Sets,Reps,LoadMin,LoadMax,RPE
-  const expectedHeaders = ['Day', 'Exercise', 'Sets', 'Reps', 'LoadMin', 'LoadMax', 'RPE'];
+  // Expected headers: Day,Exercise,Sets,Reps,BaseLoadMin,BaseLoadMax,RPE (same as block CSV)
+  const expectedHeaders = ['Day', 'Exercise', 'Sets', 'Reps', 'BaseLoadMin', 'BaseLoadMax', 'RPE'];
   const hasAllHeaders = expectedHeaders.every(h => headers.includes(h));
   
   if (!hasAllHeaders) {
@@ -39,12 +41,18 @@ export const parseCSV = (csvText) => {
       const value = values[index];
       
       // Convert numeric fields
-      if (['Day', 'Sets', 'Reps', 'LoadMin', 'LoadMax', 'RPE'].includes(header)) {
+      if (['Day', 'Sets', 'Reps', 'BaseLoadMin', 'BaseLoadMax', 'RPE'].includes(header)) {
         workout[header] = value === '' ? null : Number(value);
       } else {
         workout[header] = value;
       }
     });
+
+    // Convert BaseLoadMin/BaseLoadMax to LoadMin/LoadMax for legacy system
+    workout.LoadMin = workout.BaseLoadMin;
+    workout.LoadMax = workout.BaseLoadMax;
+    delete workout.BaseLoadMin;
+    delete workout.BaseLoadMax;
 
     const day = workout.Day;
     if (!workoutsByDay[day]) {

@@ -1,18 +1,27 @@
 import { useState } from 'react';
 
-const FileUpload = ({ onFileUpload }) => {
+const FileUpload = ({ onFileUpload, onFileSelect }) => {
   const [error, setError] = useState('');
 
   const handleFileChange = (e) => {
     const file = e.target.files[0];
-    if (!file) return;
+    if (!file) {
+      // Clear error when no file is selected
+      setError('');
+      if (onFileSelect) onFileSelect();
+      return;
+    }
+
+    // Clear any previous errors immediately when a new file is selected
+    setError('');
+    // Notify parent to clear its error state
+    if (onFileSelect) onFileSelect();
 
     if (file.type !== 'text/csv' && !file.name.endsWith('.csv')) {
       setError('Please upload a CSV file');
       return;
     }
 
-    setError('');
     const reader = new FileReader();
 
     reader.onload = (event) => {
@@ -60,7 +69,7 @@ const FileUpload = ({ onFileUpload }) => {
         </div>
       )}
       <p className="text-xs text-gray-500 mt-2">
-        Expected format: Day,Exercise,Sets,Reps,LoadMin,LoadMax,RPE
+        Expected format: Day,Exercise,Sets,Reps,BaseLoadMin,BaseLoadMax,RPE
       </p>
     </div>
   );

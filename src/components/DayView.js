@@ -1,11 +1,10 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useWorkout } from '../context/WorkoutContext';
-import { saveWorkoutLog } from '../utils/workoutStorage';
-import { getTrainingBlock } from '../utils/workoutStorage';
+import { saveWorkoutLog, getTrainingBlock, updateTrainingBlock, saveWorkoutsByDay } from '../utils/workoutStorage';
 
 const DayView = () => {
-  const { workoutsByDay } = useWorkout();
+  const { workoutsByDay, setWorkoutsByDay } = useWorkout();
   const { blockId, weekNumber, dayNumber } = useParams();
   const navigate = useNavigate();
   
@@ -13,36 +12,55 @@ const DayView = () => {
   const isBlockMode = blockId && weekNumber;
   const day = parseInt(dayNumber, 10);
   const week = weekNumber ? parseInt(weekNumber, 10) : null;
-  const block = blockId ? getTrainingBlock(parseInt(blockId, 10)) : null;
+  
+  // Load block data with useEffect for consistency
+  const [block, setBlock] = useState(null);
+  useEffect(() => {
+    if (blockId) {
+      const loadedBlock = getTrainingBlock(parseInt(blockId, 10));
+      setBlock(loadedBlock);
+    }
+  }, [blockId]);
 
   // State keyed by day number to maintain separate state for each day
   const [loggingExercises, setLoggingExercises] = useState({}); // { day: { exIndex: true } }
   const [workoutLog, setWorkoutLog] = useState({}); // { day: { exIndex: [sets] } }
   const [completedExercises, setCompletedExercises] = useState({}); // { day: { exIndex: true } }
   const [showSuccess, setShowSuccess] = useState(false);
+  const [error, setError] = useState('');
 
-  // Load exercises based on mode
-  let exercises = [];
-  let allDays = [];
-  let currentWeekData = null;
-
-  if (isBlockMode && block) {
-    // Block mode: load from block structure
-    currentWeekData = block.weeks.find(w => w.weekNumber === week);
-    if (currentWeekData) {
-      const dayData = currentWeekData.days.find(d => d.dayNumber === day);
-      exercises = dayData ? dayData.exercises : [];
-      
-      // Get all days for this week
-      allDays = currentWeekData.days.map(d => d.dayNumber).sort((a, b) => a - b);
+  // Load exercises based on mode - computed from current state
+  const getExercises = () => {
+    if (isBlockMode && block) {
+      // Block mode: load from block structure
+      const currentWeekData = block.weeks.find(w => w.weekNumber === week);
+      if (currentWeekData) {
+        const dayData = currentWeekData.days.find(d => d.dayNumber === day);
+        return dayData ? dayData.exercises : [];
+      }
+    } else if (workoutsByDay) {
+      // Legacy mode: load from workoutsByDay
+      return workoutsByDay[day] || [];
     }
-  } else if (workoutsByDay) {
-    // Legacy mode: load from workoutsByDay
-    exercises = workoutsByDay[day] || [];
-    allDays = Object.keys(workoutsByDay)
-      .map(d => parseInt(d, 10))
-      .sort((a, b) => a - b);
-  }
+    return [];
+  };
+
+  const getAllDays = () => {
+    if (isBlockMode && block) {
+      const currentWeekData = block.weeks.find(w => w.weekNumber === week);
+      if (currentWeekData) {
+        return currentWeekData.days.map(d => d.dayNumber).sort((a, b) => a - b);
+      }
+    } else if (workoutsByDay) {
+      return Object.keys(workoutsByDay)
+        .map(d => parseInt(d, 10))
+        .sort((a, b) => a - b);
+    }
+    return [];
+  };
+
+  const exercises = getExercises();
+  const allDays = getAllDays();
 
   // Get current day's state (default to empty objects if day doesn't exist)
   const currentDayLogging = loggingExercises[day] || {};
@@ -220,6 +238,13 @@ const DayView = () => {
           </Link>
         </div>
 
+        {/* Error Display */}
+        {error && (
+          <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700">
+            {error}
+          </div>
+        )}
+
         {/* Day Header */}
         <div className="mb-8">
           <h1 className="text-4xl sm:text-5xl font-bold text-gray-900 mb-2">
@@ -251,10 +276,61 @@ const DayView = () => {
                 key={exIndex}
                 className="bg-white rounded-2xl shadow-md border border-gray-200 p-6 sm:p-8 active:shadow-lg transition-all"
               >
-                {/* Exercise Name - Much larger on mobile */}
-                <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-6 leading-tight">
-                  {exercise.Exercise}
-                </h2>
+                {/* Exercise Name and Delete Button */}
+                <div className="flex items-start justify-between mb-6">
+                  <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 leading-tight flex-1">
+                    {exercise.Exercise}
+                  </h2>
+                  <button
+                    onClick={() => {
+                      if (window.confirm(`Delete "${exercise.Exercise}" from this day?`)) {
+                        try {
+                          if (isBlockMode && block) {
+                            // Block mode: remove from all weeks
+                            const updatedBlock = { ...block };
+                            const weekIndex = updatedBlock.weeks.findIndex(w => w.weekNumber === week);
+                            if (weekIndex !== -1) {
+                              const dayIndex = updatedBlock.weeks[weekIndex].days.findIndex(d => d.dayNumber === day);
+                              if (dayIndex !== -1) {
+                                // Remove exercise from all weeks (since exercises are the same across weeks)
+                                updatedBlock.weeks.forEach(w => {
+                                  const d = w.days.find(d => d.dayNumber === day);
+                                  if (d) {
+                                    d.exercises = d.exercises.filter((_, idx) => idx !== exIndex);
+                                  }
+                                });
+                                updateTrainingBlock(updatedBlock);
+                                // Update local state to reflect changes
+                                setBlock(updatedBlock);
+                              }
+                            }
+                          } else if (workoutsByDay) {
+                            // Legacy mode: remove from workoutsByDay
+                            const updatedWorkoutsByDay = { ...workoutsByDay };
+                            if (updatedWorkoutsByDay[day]) {
+                              updatedWorkoutsByDay[day] = updatedWorkoutsByDay[day].filter((_, idx) => idx !== exIndex);
+                              // If day has no exercises left, remove the day key
+                              if (updatedWorkoutsByDay[day].length === 0) {
+                                delete updatedWorkoutsByDay[day];
+                              }
+                              // Save to localStorage
+                              saveWorkoutsByDay(updatedWorkoutsByDay);
+                              // Update context
+                              setWorkoutsByDay(updatedWorkoutsByDay);
+                            }
+                          }
+                        } catch (err) {
+                          setError('Failed to delete exercise: ' + err.message);
+                          setTimeout(() => setError(''), 5000);
+                        }
+                      }
+                    }}
+                    className="ml-4 px-3 py-2 bg-red-100 text-red-700 rounded-lg text-sm font-semibold hover:bg-red-200 transition-colors min-h-[44px]"
+                    aria-label="Delete exercise"
+                  >
+                    Delete
+                  </button>
+                </div>
 
                 {!currentDayLogging[exIndex] ? (
                   /* Exercise Details - View Mode */

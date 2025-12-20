@@ -1,14 +1,31 @@
 import { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
-import { getTrainingBlocks } from '../utils/workoutStorage';
+import { Link, useNavigate } from 'react-router-dom';
+import { getTrainingBlocks, deleteTrainingBlock } from '../utils/workoutStorage';
 
 const BlockSelector = () => {
   const [blocks, setBlocks] = useState([]);
+  const [error, setError] = useState('');
+  const navigate = useNavigate();
 
   useEffect(() => {
     const loadedBlocks = getTrainingBlocks();
     setBlocks(loadedBlocks);
   }, []);
+
+  const handleDeleteBlock = (blockId, e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (window.confirm(`Are you sure you want to delete Block ${blockId}? This action cannot be undone.`)) {
+      try {
+        deleteTrainingBlock(blockId);
+        const updatedBlocks = getTrainingBlocks();
+        setBlocks(updatedBlocks);
+      } catch (err) {
+        setError('Failed to delete block: ' + err.message);
+        setTimeout(() => setError(''), 5000);
+      }
+    }
+  };
 
   const formatDate = (timestamp) => {
     const date = new Date(timestamp);
@@ -22,6 +39,29 @@ const BlockSelector = () => {
   return (
     <div className="min-h-screen bg-gray-50 pb-24">
       <div className="max-w-4xl mx-auto px-4 pt-6 pb-8">
+        {/* Navigation Links */}
+        <div className="flex flex-wrap gap-4 mb-6">
+          <Link
+            to="/"
+            className="text-blue-600 hover:text-blue-800 font-medium text-base py-2 px-1 min-h-[44px] flex items-center"
+          >
+            ← Home
+          </Link>
+          <Link
+            to="/history"
+            className="text-blue-600 hover:text-blue-800 font-medium text-base py-2 px-1 min-h-[44px] flex items-center"
+          >
+            History
+          </Link>
+        </div>
+
+        {/* Error Display */}
+        {error && (
+          <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700">
+            {error}
+          </div>
+        )}
+
         <div className="flex justify-between items-center mb-8">
           <div>
             <h1 className="text-4xl sm:text-5xl font-bold text-gray-900 mb-2">
@@ -53,13 +93,15 @@ const BlockSelector = () => {
         ) : (
           <div className="space-y-4">
             {blocks.map((block) => (
-              <Link
+              <div
                 key={block.blockId}
-                to={`/block/${block.blockId}`}
-                className="block bg-white rounded-2xl shadow-md border border-gray-200 p-6 hover:shadow-lg transition-shadow active:shadow-md"
+                className="bg-white rounded-2xl shadow-md border border-gray-200 p-6 hover:shadow-lg transition-shadow"
               >
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                  <div className="flex-1">
+                  <Link
+                    to={`/block/${block.blockId}`}
+                    className="flex-1"
+                  >
                     <div className="flex items-center gap-3 mb-2">
                       <h2 className="text-2xl font-bold text-gray-900">
                         Block {block.blockId}
@@ -76,12 +118,24 @@ const BlockSelector = () => {
                       <span>•</span>
                       <span>Deload: {(block.deloadRate * 100).toFixed(0)}%</span>
                     </div>
-                  </div>
-                  <div className="text-blue-600 font-semibold text-lg">
-                    View Block →
+                  </Link>
+                  <div className="flex items-center gap-3">
+                    <Link
+                      to={`/block/${block.blockId}`}
+                      className="text-blue-600 font-semibold text-lg hover:text-blue-800"
+                    >
+                      View Block →
+                    </Link>
+                    <button
+                      onClick={(e) => handleDeleteBlock(block.blockId, e)}
+                      className="px-4 py-2 bg-red-100 text-red-700 rounded-lg text-sm font-semibold hover:bg-red-200 transition-colors min-h-[44px]"
+                      aria-label="Delete block"
+                    >
+                      Delete
+                    </button>
                   </div>
                 </div>
-              </Link>
+              </div>
             ))}
           </div>
         )}
