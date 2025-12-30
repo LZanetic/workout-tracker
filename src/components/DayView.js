@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useWorkout } from '../context/WorkoutContext';
-import { saveWorkoutLog, getTrainingBlock, updateTrainingBlock, saveWorkoutsByDay } from '../utils/workoutStorage';
+import { saveWorkoutLog, getTrainingBlock, updateTrainingBlock, saveWorkoutsByDay, getWorkoutLogs } from '../utils/workoutStorage';
 
 const DayView = () => {
   const { workoutsByDay, setWorkoutsByDay } = useWorkout();
@@ -66,6 +66,75 @@ const DayView = () => {
   const currentDayLogging = loggingExercises[day] || {};
   const currentDayWorkoutLog = workoutLog[day] || {};
   const currentDayCompleted = completedExercises[day] || {};
+
+  // Helper function to get previous week's workout data for comparison
+  const getPreviousWeekData = (exerciseName, currentWeekNum, currentDayNum, currentBlockId) => {
+    if (!currentWeekNum || currentWeekNum <= 1 || !currentBlockId) {
+      return null; // No previous week or not in block mode
+    }
+
+    const previousWeekNum = currentWeekNum - 1;
+    const allLogs = getWorkoutLogs();
+    
+    // Find previous week's workout for the same day and block
+    const previousWorkout = allLogs.find(log => {
+      // Handle both 'week' and 'weekNumber' field names
+      const logWeek = log.week || log.weekNumber;
+      // Handle both 'day' and 'dayNumber' field names
+      const logDay = log.day || log.dayNumber;
+      const logBlockId = log.blockId;
+      
+      return logWeek === previousWeekNum && 
+             logDay === currentDayNum && 
+             logBlockId === currentBlockId;
+    });
+
+    if (!previousWorkout || !previousWorkout.exercises) {
+      return null;
+    }
+
+    // Find the matching exercise by name
+    // Handle both 'exerciseName' and 'name' field names
+    const previousExercise = previousWorkout.exercises.find(ex => {
+      const exName = ex.exerciseName || ex.name;
+      return exName === exerciseName;
+    });
+
+    if (!previousExercise) {
+      return null;
+    }
+
+    // Handle both 'sets' and 'actualSets' field names
+    const sets = previousExercise.sets || previousExercise.actualSets || [];
+    
+    if (sets.length === 0) {
+      return null;
+    }
+
+    // Calculate averages from all sets
+    const validSets = sets.filter(set => 
+      set.weight !== null && set.weight !== undefined && set.weight !== '' &&
+      set.reps !== null && set.reps !== undefined && set.reps !== ''
+    );
+
+    if (validSets.length === 0) {
+      return null;
+    }
+
+    const totalWeight = validSets.reduce((sum, set) => sum + parseFloat(set.weight), 0);
+    const totalReps = validSets.reduce((sum, set) => sum + parseFloat(set.reps), 0);
+    const totalRPE = validSets
+      .filter(set => set.rpe !== null && set.rpe !== undefined && set.rpe !== '')
+      .reduce((sum, set) => sum + parseFloat(set.rpe), 0);
+    const rpeCount = validSets.filter(set => set.rpe !== null && set.rpe !== undefined && set.rpe !== '').length;
+
+    return {
+      avgWeight: totalWeight / validSets.length,
+      avgReps: totalReps / validSets.length,
+      avgRPE: rpeCount > 0 ? totalRPE / rpeCount : null,
+      weekNumber: previousWeekNum
+    };
+  };
   
   // Check if we have data to display
   if (!isBlockMode && !workoutsByDay) {
@@ -470,6 +539,83 @@ const DayView = () => {
                         </button>
                       </div>
                     </div>
+
+                    {/* Last Week Comparison */}
+                    {(() => {
+                      if (!isBlockMode || !week || week <= 1) {
+                        return null; // Only show for block mode, week 2+
+                      }
+
+                      const previousWeekData = getPreviousWeekData(exercise.Exercise, week, day, parseInt(blockId, 10));
+                      
+                      if (!previousWeekData) {
+                        return null; // No previous week data found
+                      }
+
+                      // Calculate prescribed load midpoint for comparison
+                      const prescribedMidpoint = exercise.LoadMin && exercise.LoadMax
+                        ? (parseFloat(exercise.LoadMin) + parseFloat(exercise.LoadMax)) / 2
+                        : exercise.LoadMin
+                        ? parseFloat(exercise.LoadMin)
+                        : exercise.LoadMax
+                        ? parseFloat(exercise.LoadMax)
+                        : null;
+
+                      if (prescribedMidpoint === null) {
+                        return null; // No prescribed load to compare
+                      }
+
+                      const diff = prescribedMidpoint - previousWeekData.avgWeight;
+                      const percent = previousWeekData.avgWeight > 0 
+                        ? ((diff / previousWeekData.avgWeight) * 100).toFixed(1)
+                        : 0;
+                      const absDiff = Math.abs(diff);
+
+                      // Determine progress indicator
+                      let progressIndicator = null;
+                      if (Math.abs(diff) < 0.01) {
+                        // Same load (within 0.01kg tolerance)
+                        progressIndicator = (
+                          <span className="text-gray-600 font-semibold">→ Same load</span>
+                        );
+                      } else if (diff > 0) {
+                        // Increased load
+                        progressIndicator = (
+                          <span className="text-green-600 font-semibold">
+                            ↗️ +{absDiff.toFixed(1)}kg (+{percent}%)
+                          </span>
+                        );
+                      } else {
+                        // Decreased load (deload)
+                        progressIndicator = (
+                          <span className="text-orange-600 font-semibold">
+                            ↘️ -{absDiff.toFixed(1)}kg (Deload)
+                          </span>
+                        );
+                      }
+
+                      return (
+                        <div className="mb-4 p-4 bg-gray-50 border border-gray-200 rounded-xl">
+                          <div className="flex items-center gap-2 mb-3">
+                            <span className="text-lg">📊</span>
+                            <span className="text-sm font-bold text-gray-700 uppercase tracking-wide">
+                              LAST WEEK (Week {previousWeekData.weekNumber})
+                            </span>
+                          </div>
+                          <div className="mb-3">
+                            <p className="text-base text-gray-700">
+                              You did: <span className="font-semibold">{previousWeekData.avgWeight.toFixed(1)}kg</span> × <span className="font-semibold">{previousWeekData.avgReps.toFixed(1)}</span> reps
+                              {previousWeekData.avgRPE !== null && (
+                                <span>, RPE <span className="font-semibold">{previousWeekData.avgRPE.toFixed(1)}</span></span>
+                              )}
+                            </p>
+                          </div>
+                          <div className="pt-2 border-t border-gray-300">
+                            {progressIndicator}
+                          </div>
+                        </div>
+                      );
+                    })()}
                     
                     {/* Sets Input Fields */}
                     <div className="space-y-5">
@@ -522,17 +668,6 @@ const DayView = () => {
                                   if (!updatedLog[day][exIndex]) updatedLog[day][exIndex] = [...sets];
                                   updatedLog[day][exIndex][setIndex].weight = e.target.value;
                                   setWorkoutLog(updatedLog);
-                                  
-                                  // Check if all sets are filled and auto-complete
-                                  const allSetsFilled = updatedLog[day][exIndex].every(s => 
-                                    s.weight && s.reps && s.rpe
-                                  );
-                                  if (allSetsFilled && !currentDayCompleted[exIndex]) {
-                                    setCompletedExercises(prev => ({
-                                      ...prev,
-                                      [day]: { ...(prev[day] || {}), [exIndex]: true }
-                                    }));
-                                  }
                                 }}
                                 disabled={currentDayCompleted[exIndex]}
                                 placeholder="0"
@@ -556,17 +691,6 @@ const DayView = () => {
                                   if (!updatedLog[day][exIndex]) updatedLog[day][exIndex] = [...sets];
                                   updatedLog[day][exIndex][setIndex].reps = e.target.value;
                                   setWorkoutLog(updatedLog);
-                                  
-                                  // Check if all sets are filled and auto-complete
-                                  const allSetsFilled = updatedLog[day][exIndex].every(s => 
-                                    s.weight && s.reps && s.rpe
-                                  );
-                                  if (allSetsFilled && !currentDayCompleted[exIndex]) {
-                                    setCompletedExercises(prev => ({
-                                      ...prev,
-                                      [day]: { ...(prev[day] || {}), [exIndex]: true }
-                                    }));
-                                  }
                                 }}
                                 disabled={currentDayCompleted[exIndex]}
                                 placeholder="0"
@@ -594,17 +718,6 @@ const DayView = () => {
                                     if (!updatedLog[day][exIndex]) updatedLog[day][exIndex] = [...sets];
                                     updatedLog[day][exIndex][setIndex].rpe = value;
                                     setWorkoutLog(updatedLog);
-                                    
-                                    // Check if all sets are filled and auto-complete
-                                    const allSetsFilled = updatedLog[day][exIndex].every(s => 
-                                      s.weight && s.reps && s.rpe
-                                    );
-                                    if (allSetsFilled && !currentDayCompleted[exIndex]) {
-                                      setCompletedExercises(prev => ({
-                                        ...prev,
-                                        [day]: { ...(prev[day] || {}), [exIndex]: true }
-                                      }));
-                                    }
                                   }
                                 }}
                                 disabled={currentDayCompleted[exIndex]}
