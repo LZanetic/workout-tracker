@@ -10,6 +10,3 @@ public class WorkoutTrackerApplication {
         SpringApplication.run(WorkoutTrackerApplication.class, args);
     }
 }
-
-
-

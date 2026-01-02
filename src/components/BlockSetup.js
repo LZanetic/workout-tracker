@@ -4,6 +4,8 @@ import FileUpload from './FileUpload';
 import { parseBlockCSV } from '../utils/blockCsvParser';
 import { generateBlockWeeks } from '../utils/blockProgression';
 import { saveTrainingBlock } from '../utils/workoutStorage';
+import { createBlock } from '../services/api';
+import { transformBlockForAPI } from '../utils/apiTransformers';
 import ExerciseForm from './ExerciseForm';
 import DayBuilder from './DayBuilder';
 
@@ -150,7 +152,7 @@ const BlockSetup = () => {
     }
   };
 
-  const handleGenerateBlock = () => {
+  const handleGenerateBlock = async () => {
     const dataToUse = inputMethod === 'csv' ? week1Data : manualWeekData;
     
     if (!dataToUse) {
@@ -180,19 +182,11 @@ const BlockSetup = () => {
       // Generate all weeks
       const weeks = generateBlockWeeks(dataToUse, weeksToGenerate, progressionRate, deloadRate);
 
-      // Get next block ID
-      const existingBlocks = JSON.parse(localStorage.getItem('training_blocks') || '[]');
-      const nextBlockId = existingBlocks.length > 0 
-        ? Math.max(...existingBlocks.map(b => b.blockId)) + 1 
-        : 1;
-
-      // Create block object
-      const block = {
-        blockId: nextBlockId,
+      // Create block object for API
+      const blockForAPI = {
         blockLength: weeksToGenerate,
         progressionRate,
         deloadRate,
-        createdAt: new Date().toISOString(),
         weeks: weeks.map(week => ({
           weekNumber: week.weekNumber,
           days: Object.keys(week.days).map(dayNum => ({
@@ -202,11 +196,49 @@ const BlockSetup = () => {
         }))
       };
 
-      // Save block
-      saveTrainingBlock(block);
+      // Try API first, fallback to localStorage on error
+      try {
+        const apiBlockData = transformBlockForAPI(blockForAPI);
+        const createdBlock = await createBlock(apiBlockData);
+        
+        // Also save to localStorage as backup
+        const blockForStorage = {
+          blockId: createdBlock.id,
+          blockLength: weeksToGenerate,
+          progressionRate,
+          deloadRate,
+          createdAt: new Date().toISOString(),
+          weeks: blockForAPI.weeks
+        };
+        saveTrainingBlock(blockForStorage);
 
-      // Navigate to block view
-      navigate(`/block/${nextBlockId}`);
+        // Navigate to block view
+        navigate(`/block/${createdBlock.id}`);
+      } catch (apiError) {
+        console.warn('API call failed, using localStorage fallback:', apiError);
+        
+        // Fallback to localStorage
+        const existingBlocks = JSON.parse(localStorage.getItem('training_blocks') || '[]');
+        const nextBlockId = existingBlocks.length > 0 
+          ? Math.max(...existingBlocks.map(b => b.blockId)) + 1 
+          : 1;
+
+        const blockForStorage = {
+          blockId: nextBlockId,
+          blockLength: weeksToGenerate,
+          progressionRate,
+          deloadRate,
+          createdAt: new Date().toISOString(),
+          weeks: blockForAPI.weeks
+        };
+
+        saveTrainingBlock(blockForStorage);
+        navigate(`/block/${nextBlockId}`);
+        
+        // Show warning but don't block user
+        setError('Warning: Saved to local storage only. API unavailable.');
+        setTimeout(() => setError(''), 5000);
+      }
     } catch (err) {
       setError(`Error generating block: ${err.message}`);
     } finally {

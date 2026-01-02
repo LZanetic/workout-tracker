@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useWorkout } from '../context/WorkoutContext';
 import { saveWorkoutLog, getTrainingBlock, updateTrainingBlock, saveWorkoutsByDay, getWorkoutLogs } from '../utils/workoutStorage';
+import { getBlock, logWorkout } from '../services/api';
 
 const DayView = () => {
   const { workoutsByDay, setWorkoutsByDay } = useWorkout();
@@ -17,8 +18,28 @@ const DayView = () => {
   const [block, setBlock] = useState(null);
   useEffect(() => {
     if (blockId) {
-      const loadedBlock = getTrainingBlock(parseInt(blockId, 10));
-      setBlock(loadedBlock);
+      const loadBlock = async () => {
+        setIsLoadingBlock(true);
+        try {
+          // Try API first
+          const apiBlock = await getBlock(parseInt(blockId, 10));
+          if (apiBlock) {
+            setBlock(apiBlock);
+          } else {
+            // Fallback to localStorage
+            const localBlock = getTrainingBlock(parseInt(blockId, 10));
+            setBlock(localBlock);
+          }
+        } catch (err) {
+          console.warn('Failed to load block from API, using localStorage:', err);
+          // Fallback to localStorage
+          const localBlock = getTrainingBlock(parseInt(blockId, 10));
+          setBlock(localBlock);
+        } finally {
+          setIsLoadingBlock(false);
+        }
+      };
+      loadBlock();
     }
   }, [blockId]);
 
@@ -28,6 +49,36 @@ const DayView = () => {
   const [completedExercises, setCompletedExercises] = useState({}); // { day: { exIndex: true } }
   const [showSuccess, setShowSuccess] = useState(false);
   const [error, setError] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [isLoadingBlock, setIsLoadingBlock] = useState(false);
+  const [isSavingWorkout, setIsSavingWorkout] = useState(false);
+
+  // Normalize exercise from API format to frontend format
+  const normalizeExercise = (exercise) => {
+    // If already in frontend format (localStorage), return as is
+    if (exercise.Exercise || exercise.Sets) {
+      return exercise;
+    }
+    
+    // Convert from API format to frontend format
+    // API format has prescribedSets array, frontend expects Sets/Reps/LoadMin/LoadMax/RPE
+    const firstSet = exercise.prescribedSets && exercise.prescribedSets.length > 0 
+      ? exercise.prescribedSets[0] 
+      : null;
+    
+    return {
+      id: exercise.id,
+      Exercise: exercise.name,
+      Sets: firstSet ? firstSet.targetSets : 0,
+      Reps: firstSet ? firstSet.targetReps : 0,
+      LoadMin: firstSet ? firstSet.targetLoadMin : null,
+      LoadMax: firstSet ? firstSet.targetLoadMax : null,
+      RPE: firstSet ? firstSet.targetRPE : null,
+      Category: exercise.category,
+      Tempo: firstSet ? (firstSet.tempo === 'EXPLOSIVE' ? 'Explosive' : 'Controlled') : 'Controlled',
+      prescribedSets: exercise.prescribedSets // Keep for reference
+    };
+  };
 
   // Load exercises based on mode - computed from current state
   const getExercises = () => {
@@ -36,7 +87,10 @@ const DayView = () => {
       const currentWeekData = block.weeks.find(w => w.weekNumber === week);
       if (currentWeekData) {
         const dayData = currentWeekData.days.find(d => d.dayNumber === day);
-        return dayData ? dayData.exercises : [];
+        if (dayData && dayData.exercises) {
+          return dayData.exercises.map(normalizeExercise);
+        }
+        return [];
       }
     } else if (workoutsByDay) {
       // Legacy mode: load from workoutsByDay
@@ -314,6 +368,13 @@ const DayView = () => {
           </div>
         )}
 
+        {/* Loading Indicator for Block */}
+        {isLoadingBlock && isBlockMode && (
+          <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg text-blue-700">
+            Loading block data...
+          </div>
+        )}
+
         {/* Day Header */}
         <div className="mb-8">
           <h1 className="text-4xl sm:text-5xl font-bold text-gray-900 mb-2">
@@ -348,11 +409,11 @@ const DayView = () => {
                 {/* Exercise Name and Delete Button */}
                 <div className="flex items-start justify-between mb-6">
                   <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 leading-tight flex-1">
-                    {exercise.Exercise}
+                    {exercise.Exercise || exercise.name}
                   </h2>
                   <button
                     onClick={() => {
-                      if (window.confirm(`Delete "${exercise.Exercise}" from this day?`)) {
+                      if (window.confirm(`Delete "${exercise.Exercise || exercise.name}" from this day?`)) {
                         try {
                           if (isBlockMode && block) {
                             // Block mode: remove from all weeks
@@ -546,7 +607,7 @@ const DayView = () => {
                         return null; // Only show for block mode, week 2+
                       }
 
-                      const previousWeekData = getPreviousWeekData(exercise.Exercise, week, day, parseInt(blockId, 10));
+                      const previousWeekData = getPreviousWeekData(exercise.Exercise || exercise.name, week, day, parseInt(blockId, 10));
                       
                       if (!previousWeekData) {
                         return null; // No previous week data found
@@ -765,34 +826,93 @@ const DayView = () => {
               Cancel All
             </button>
             <button
-              onClick={() => {
+              onClick={async () => {
                 // Prepare workout log data - only include exercises that were logged and completed
                 const loggedExercises = exercises
                   .map((exercise, exIndex) => {
                     if (currentDayWorkoutLog[exIndex] && currentDayWorkoutLog[exIndex].length > 0 && currentDayCompleted[exIndex]) {
                       return {
-                        exerciseName: exercise.Exercise,
-                        sets: currentDayWorkoutLog[exIndex]
+                        exerciseId: exercise.id, // From API block (may be undefined for localStorage blocks)
+                        exerciseName: exercise.Exercise || exercise.name,
+                        sets: currentDayWorkoutLog[exIndex],
+                        index: exIndex
                       };
                     }
                     return null;
                   })
                   .filter(ex => ex !== null);
 
-                if (loggedExercises.length > 0) {
-                  const completedWorkout = {
-                    day,
-                    timestamp: new Date().toISOString(),
-                    exercises: loggedExercises,
-                    // Add block info if in block mode
-                    ...(isBlockMode && {
+                if (loggedExercises.length === 0) {
+                  setError('Please complete at least one exercise');
+                  return;
+                }
+
+                if (!isBlockMode) {
+                  setError('Workout logging requires a training block');
+                  return;
+                }
+
+                setIsSavingWorkout(true);
+                setError('');
+
+                try {
+                  // Check if all exercises have IDs (required for API)
+                  const allExercisesHaveIds = loggedExercises.every(ex => ex.exerciseId);
+                  
+                  if (allExercisesHaveIds) {
+                    // Transform for API format
+                    const workoutForAPI = {
+                      blockId: parseInt(blockId, 10),
+                      weekNumber: week,
+                      dayNumber: day,
+                      exercises: loggedExercises.map(ex => ({
+                        exerciseId: ex.exerciseId,
+                        actualSets: ex.sets.map((set, setIndex) => ({
+                          setNumber: setIndex + 1,
+                          actualWeight: set.weight ? parseFloat(set.weight) : null,
+                          actualReps: set.reps ? parseInt(set.reps, 10) : null,
+                          actualRPE: set.rpe ? parseInt(set.rpe, 10) : null,
+                          tempoUsed: null,
+                          videoRecorded: false,
+                          feedback: null
+                        }))
+                      }))
+                    };
+
+                    // Try API first
+                    try {
+                      await logWorkout(workoutForAPI);
+                    } catch (apiError) {
+                      console.warn('API call failed, using localStorage fallback:', apiError);
+                      // Fallback to localStorage
+                      const completedWorkout = {
+                        day,
+                        timestamp: new Date().toISOString(),
+                        exercises: loggedExercises.map(ex => ({
+                          exerciseName: ex.exerciseName,
+                          sets: ex.sets
+                        })),
+                        blockId: parseInt(blockId, 10),
+                        week: week
+                      };
+                      saveWorkoutLog(completedWorkout);
+                      setError('Warning: Saved to local storage only. API unavailable.');
+                      setTimeout(() => setError(''), 5000);
+                    }
+                  } else {
+                    // No exercise IDs - use localStorage only (legacy block)
+                    const completedWorkout = {
+                      day,
+                      timestamp: new Date().toISOString(),
+                      exercises: loggedExercises.map(ex => ({
+                        exerciseName: ex.exerciseName,
+                        sets: ex.sets
+                      })),
                       blockId: parseInt(blockId, 10),
                       week: week
-                    })
-                  };
-
-                  // Save to localStorage with timestamp, day, and all exercises/sets
-                  saveWorkoutLog(completedWorkout);
+                    };
+                    saveWorkoutLog(completedWorkout);
+                  }
                   
                   // Show success message
                   setShowSuccess(true);
@@ -810,19 +930,26 @@ const DayView = () => {
                   });
                   setCompletedExercises(prev => {
                     const updated = { ...prev };
-                    delete updated[day];
+                    if (updated[day]) {
+                      delete updated[day];
+                    }
                     return updated;
                   });
                   
-                  // Hide success message after 3 seconds and stay on workout plan view
+                  // Hide success message after 3 seconds
                   setTimeout(() => {
                     setShowSuccess(false);
                   }, 3000);
+                } catch (err) {
+                  setError(`Error saving workout: ${err.message}`);
+                } finally {
+                  setIsSavingWorkout(false);
                 }
               }}
-              className="flex-1 px-6 py-5 bg-green-600 text-white rounded-xl font-bold text-lg hover:bg-green-700 active:bg-green-800 transition-colors shadow-lg min-h-[56px]"
+              disabled={isSavingWorkout}
+              className="flex-1 px-6 py-5 bg-green-600 text-white rounded-xl font-bold text-lg hover:bg-green-700 active:bg-green-800 transition-colors shadow-lg min-h-[56px] disabled:bg-gray-400 disabled:cursor-not-allowed"
             >
-              Complete Workout
+              {isSavingWorkout ? 'Saving...' : 'Complete Workout'}
             </button>
           </div>
         )}
