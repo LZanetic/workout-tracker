@@ -1,31 +1,164 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { getWorkoutLogs, getTrainingBlock, deleteWorkoutLog } from '../utils/workoutStorage';
+import { getWorkoutLogs, getTrainingBlock, getTrainingBlocks } from '../utils/workoutStorage';
+import { getAllBlocks, getBlockProgress, deleteWorkout } from '../services/api';
 
 const History = () => {
   const [workouts, setWorkouts] = useState([]);
   const [selectedWorkout, setSelectedWorkout] = useState(null);
   const [error, setError] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
 
-  const loadWorkouts = () => {
-    const logs = getWorkoutLogs();
-    // Sort by timestamp, most recent first
-    const sortedLogs = logs.sort((a, b) => 
-      new Date(b.timestamp) - new Date(a.timestamp)
-    );
-    setWorkouts(sortedLogs);
+  // Transform API workout format to localStorage format
+  const transformApiWorkout = (apiWorkout) => {
+    return {
+      blockId: apiWorkout.blockId,
+      week: apiWorkout.weekNumber,
+      weekNumber: apiWorkout.weekNumber,
+      day: apiWorkout.dayNumber,
+      dayNumber: apiWorkout.dayNumber,
+      timestamp: apiWorkout.completedAt || new Date().toISOString(),
+      exercises: apiWorkout.exercises.map(ex => ({
+        exerciseName: ex.exerciseName,
+        sets: ex.actualSets.map(set => ({
+          weight: set.actualWeight,
+          reps: set.actualReps,
+          rpe: set.actualRPE,
+          completed: true // API workouts are all completed
+        }))
+      }))
+    };
+  };
+
+  // Create a unique key for deduplication
+  const getWorkoutKey = (workout) => {
+    if (workout.blockId && workout.week && workout.day) {
+      return `api_${workout.blockId}_${workout.week}_${workout.day}`;
+    }
+    return `local_${workout.timestamp}_${workout.day}`;
+  };
+
+  const loadWorkouts = async () => {
+    setIsLoading(true);
+    setError('');
+    try {
+      const allWorkouts = [];
+      const workoutKeys = new Set();
+
+      // Try to load from API
+      try {
+        // Get all blocks (try API first, fallback to localStorage)
+        let blocks = [];
+        try {
+          const apiBlocks = await getAllBlocks();
+          blocks = apiBlocks.map(block => ({
+            blockId: block.id,
+            id: block.id
+          }));
+        } catch (apiError) {
+          console.warn('Failed to load blocks from API, using localStorage:', apiError);
+          const localBlocks = getTrainingBlocks();
+          blocks = localBlocks.map(block => ({
+            blockId: block.blockId,
+            id: block.blockId
+          }));
+        }
+
+        // Fetch workouts from API for each block
+        for (const block of blocks) {
+          try {
+            const progress = await getBlockProgress(block.id || block.blockId);
+            for (const apiWorkout of progress) {
+              const transformed = transformApiWorkout(apiWorkout);
+              const key = getWorkoutKey(transformed);
+              if (!workoutKeys.has(key)) {
+                workoutKeys.add(key);
+                allWorkouts.push(transformed);
+              }
+            }
+          } catch (blockError) {
+            console.warn(`Failed to load progress for block ${block.id || block.blockId}:`, blockError);
+            // Continue with other blocks
+          }
+        }
+      } catch (apiError) {
+        console.warn('API load failed, using localStorage only:', apiError);
+      }
+
+      // Get localStorage workouts
+      const localWorkouts = getWorkoutLogs();
+      for (const localWorkout of localWorkouts) {
+        const key = getWorkoutKey(localWorkout);
+        // Only add if not already added from API (API takes precedence)
+        if (!workoutKeys.has(key)) {
+          workoutKeys.add(key);
+          allWorkouts.push(localWorkout);
+        }
+      }
+
+      // Sort by timestamp, most recent first
+      const sortedWorkouts = allWorkouts.sort((a, b) => {
+        const dateA = new Date(a.timestamp || 0);
+        const dateB = new Date(b.timestamp || 0);
+        return dateB - dateA;
+      });
+
+      setWorkouts(sortedWorkouts);
+    } catch (err) {
+      console.error('Error loading workouts:', err);
+      setError('Failed to load workouts: ' + err.message);
+      // Fallback to localStorage only
+      const logs = getWorkoutLogs();
+      const sortedLogs = logs.sort((a, b) => 
+        new Date(b.timestamp || 0) - new Date(a.timestamp || 0)
+      );
+      setWorkouts(sortedLogs);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   useEffect(() => {
     loadWorkouts();
   }, []);
 
-  const handleDeleteWorkout = (index, e) => {
+  const handleDeleteWorkout = async (index, e) => {
     e.preventDefault();
     e.stopPropagation();
     if (window.confirm('Are you sure you want to delete this workout? This action cannot be undone.')) {
       try {
-        deleteWorkoutLog(index);
+        const workout = workouts[index];
+        // If workout has blockId, weekNumber/week, and dayNumber/day, try API delete
+        const weekNum = workout?.weekNumber || workout?.week;
+        const dayNum = workout?.dayNumber || workout?.day;
+        if (workout && workout.blockId && weekNum && dayNum) {
+          try {
+            await deleteWorkout(workout.blockId, weekNum, dayNum);
+          } catch (apiError) {
+            console.warn('API delete failed, continuing with localStorage delete:', apiError);
+            // Continue with localStorage delete even if API fails for backward compatibility
+          }
+        }
+        // Also delete from localStorage for backward compatibility
+        // Find the workout in localStorage and delete it
+        const logs = getWorkoutLogs();
+        const workoutWeek = workout.weekNumber || workout.week;
+        const workoutDay = workout.dayNumber || workout.day;
+        const updatedLogs = logs.filter(log => {
+          if (workout.blockId && workoutWeek && workoutDay) {
+            // Match by blockId/week/day for block-based workouts
+            const logWeek = log.week || log.weekNumber;
+            const logDay = log.day || log.dayNumber;
+            return !(log.blockId === workout.blockId && 
+                    logWeek === workoutWeek && 
+                    logDay === workoutDay);
+          } else {
+            // For legacy workouts, match by timestamp and day
+            return !(log.timestamp === workout.timestamp && 
+                    (log.day || log.dayNumber) === (workout.day || workout.dayNumber));
+          }
+        });
+        localStorage.setItem('workout_logs', JSON.stringify(updatedLogs));
         loadWorkouts();
         if (selectedWorkout && workouts.indexOf(selectedWorkout) === index) {
           setSelectedWorkout(null);
@@ -189,6 +322,12 @@ const History = () => {
         {error && (
           <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700">
             {error}
+          </div>
+        )}
+        {/* Loading Indicator */}
+        {isLoading && (
+          <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg text-blue-700">
+            Loading workouts...
           </div>
         )}
         {/* Header */}

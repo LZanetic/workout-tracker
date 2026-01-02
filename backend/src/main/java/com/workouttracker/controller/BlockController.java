@@ -24,6 +24,13 @@ public class BlockController {
     private final TrainingBlockService trainingBlockService;
     private final WorkoutService workoutService;
     
+    @GetMapping
+    @Operation(summary = "Get all training blocks")
+    public ResponseEntity<List<TrainingBlockDto>> getAllBlocks() {
+        List<TrainingBlockDto> blocks = trainingBlockService.getAllTrainingBlocks();
+        return ResponseEntity.ok(blocks);
+    }
+    
     @PostMapping
     @Operation(summary = "Create a new training block with all weeks")
     public ResponseEntity<TrainingBlockDto> createBlock(@Valid @RequestBody CreateBlockRequest request) {
@@ -43,6 +50,13 @@ public class BlockController {
     public ResponseEntity<List<WorkoutResponseDto>> getBlockProgress(@PathVariable Long blockId) {
         List<WorkoutResponseDto> workouts = workoutService.getBlockProgress(blockId);
         return ResponseEntity.ok(workouts);
+    }
+    
+    @DeleteMapping("/{id}")
+    @Operation(summary = "Delete training block by ID")
+    public ResponseEntity<Void> deleteBlock(@PathVariable Long id) {
+        trainingBlockService.deleteTrainingBlock(id);
+        return ResponseEntity.noContent().build();
     }
 }
 

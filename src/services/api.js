@@ -24,6 +24,24 @@ export const createBlock = async (blockData) => {
 };
 
 /**
+ * Get all training blocks
+ * @returns {Promise<Array>} Array of block data
+ */
+export const getAllBlocks = async () => {
+  try {
+    const response = await fetch(`${API_URL}/blocks`);
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || `Failed to fetch blocks: ${response.statusText}`);
+    }
+    return response.json();
+  } catch (error) {
+    console.error('API Error - getAllBlocks:', error);
+    throw error;
+  }
+};
+
+/**
  * Get a training block by ID
  * @param {number} blockId - Block ID
  * @returns {Promise<Object>} Block data
@@ -104,6 +122,51 @@ export const getBlockProgress = async (blockId) => {
     return response.json();
   } catch (error) {
     console.error('API Error - getBlockProgress:', error);
+    throw error;
+  }
+};
+
+/**
+ * Delete a training block by ID
+ * @param {number} blockId - Block ID to delete
+ * @returns {Promise<void>}
+ */
+export const deleteBlock = async (blockId) => {
+  try {
+    const response = await fetch(`${API_URL}/blocks/${blockId}`, {
+      method: 'DELETE'
+    });
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || `Failed to delete block: ${response.statusText}`);
+    }
+  } catch (error) {
+    console.error('API Error - deleteBlock:', error);
+    throw error;
+  }
+};
+
+/**
+ * Delete a specific logged workout
+ * @param {number} blockId - Block ID
+ * @param {number} weekNumber - Week number
+ * @param {number} dayNumber - Day number
+ * @returns {Promise<void>}
+ */
+export const deleteWorkout = async (blockId, weekNumber, dayNumber) => {
+  try {
+    const response = await fetch(
+      `${API_URL}/workouts?blockId=${blockId}&weekNumber=${weekNumber}&dayNumber=${dayNumber}`,
+      {
+        method: 'DELETE'
+      }
+    );
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || `Failed to delete workout: ${response.statusText}`);
+    }
+  } catch (error) {
+    console.error('API Error - deleteWorkout:', error);
     throw error;
   }
 };

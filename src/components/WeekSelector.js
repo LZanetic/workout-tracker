@@ -1,9 +1,45 @@
+import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { getTrainingBlock } from '../utils/workoutStorage';
+import { getBlock } from '../services/api';
 
 const WeekSelector = () => {
   const { blockId } = useParams();
-  const block = getTrainingBlock(parseInt(blockId, 10));
+  const [block, setBlock] = useState(null);
+  
+  useEffect(() => {
+    const loadBlock = async () => {
+      try {
+        // Try API first
+        try {
+          const apiBlock = await getBlock(parseInt(blockId, 10));
+          if (apiBlock) {
+            // Transform API format to localStorage format
+            const transformedBlock = {
+              blockId: apiBlock.id,
+              blockLength: apiBlock.blockLength,
+              progressionRate: apiBlock.progressionRate,
+              deloadRate: apiBlock.deloadRate,
+              createdAt: apiBlock.createdAt,
+              weeks: apiBlock.weeks
+            };
+            setBlock(transformedBlock);
+            return;
+          }
+        } catch (apiError) {
+          console.warn('API load failed, using localStorage:', apiError);
+        }
+        // Fallback to localStorage
+        const localBlock = getTrainingBlock(parseInt(blockId, 10));
+        setBlock(localBlock);
+      } catch (err) {
+        console.error('Error loading block:', err);
+        const localBlock = getTrainingBlock(parseInt(blockId, 10));
+        setBlock(localBlock);
+      }
+    };
+    loadBlock();
+  }, [blockId]);
 
   if (!block) {
     return (

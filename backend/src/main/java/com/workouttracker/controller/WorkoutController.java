@@ -35,5 +35,15 @@ public class WorkoutController {
         WorkoutResponseDto workout = workoutService.getWorkout(blockId, weekNumber, dayNumber);
         return ResponseEntity.ok(workout);
     }
+    
+    @DeleteMapping
+    @Operation(summary = "Delete a specific logged workout by block, week, and day")
+    public ResponseEntity<Void> deleteWorkout(
+            @RequestParam Long blockId,
+            @RequestParam Integer weekNumber,
+            @RequestParam Integer dayNumber) {
+        workoutService.deleteWorkout(blockId, weekNumber, dayNumber);
+        return ResponseEntity.noContent().build();
+    }
 }
 

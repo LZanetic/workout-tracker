@@ -181,5 +181,21 @@ public class WorkoutService {
                 })
                 .collect(Collectors.toList());
     }
+    
+    public void deleteWorkout(Long blockId, Integer weekNumber, Integer dayNumber) {
+        // Verify the workout day exists
+        workoutDayRepository
+                .findByBlockIdAndWeekNumberAndDayNumber(blockId, weekNumber, dayNumber)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        String.format("Workout day not found for block %d, week %d, day %d",
+                                blockId, weekNumber, dayNumber)));
+        
+        // Get all actual sets for this workout day
+        List<ActualSet> actualSets = actualSetRepository
+                .findByBlockIdAndWeekNumberAndDayNumber(blockId, weekNumber, dayNumber);
+        
+        // Delete all actual sets for this workout
+        actualSetRepository.deleteAll(actualSets);
+    }
 }
 

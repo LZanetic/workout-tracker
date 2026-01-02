@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { getTrainingBlocks, deleteTrainingBlock } from '../utils/workoutStorage';
+import { getAllBlocks, deleteBlock } from '../services/api';
 
 const BlockSelector = () => {
   const [blocks, setBlocks] = useState([]);
@@ -8,18 +9,68 @@ const BlockSelector = () => {
   const navigate = useNavigate();
 
   useEffect(() => {
-    const loadedBlocks = getTrainingBlocks();
-    setBlocks(loadedBlocks);
+    const loadBlocks = async () => {
+      try {
+        // Try API first
+        try {
+          const apiBlocks = await getAllBlocks();
+          // Transform API format (id) to localStorage format (blockId)
+          const transformedBlocks = apiBlocks.map(block => ({
+            blockId: block.id,
+            blockLength: block.blockLength,
+            progressionRate: block.progressionRate,
+            deloadRate: block.deloadRate,
+            createdAt: block.createdAt,
+            weeks: block.weeks
+          }));
+          setBlocks(transformedBlocks);
+        } catch (apiError) {
+          console.warn('API load failed, using localStorage:', apiError);
+          // Fallback to localStorage
+          const loadedBlocks = getTrainingBlocks();
+          setBlocks(loadedBlocks);
+        }
+      } catch (err) {
+        console.error('Error loading blocks:', err);
+        // Fallback to localStorage
+        const loadedBlocks = getTrainingBlocks();
+        setBlocks(loadedBlocks);
+      }
+    };
+    loadBlocks();
   }, []);
 
-  const handleDeleteBlock = (blockId, e) => {
+  const handleDeleteBlock = async (blockId, e) => {
     e.preventDefault();
     e.stopPropagation();
     if (window.confirm(`Are you sure you want to delete Block ${blockId}? This action cannot be undone.`)) {
       try {
+        // Try API delete first
+        try {
+          await deleteBlock(blockId);
+        } catch (apiError) {
+          console.warn('API delete failed, continuing with localStorage delete:', apiError);
+          // Continue with localStorage delete even if API fails for backward compatibility
+        }
+        // Also delete from localStorage for backward compatibility
         deleteTrainingBlock(blockId);
-        const updatedBlocks = getTrainingBlocks();
-        setBlocks(updatedBlocks);
+        // Reload blocks from API (or localStorage if API failed)
+        try {
+          const apiBlocks = await getAllBlocks();
+          const transformedBlocks = apiBlocks.map(block => ({
+            blockId: block.id,
+            blockLength: block.blockLength,
+            progressionRate: block.progressionRate,
+            deloadRate: block.deloadRate,
+            createdAt: block.createdAt,
+            weeks: block.weeks
+          }));
+          setBlocks(transformedBlocks);
+        } catch (apiError) {
+          // Fallback to localStorage
+          const updatedBlocks = getTrainingBlocks();
+          setBlocks(updatedBlocks);
+        }
       } catch (err) {
         setError('Failed to delete block: ' + err.message);
         setTimeout(() => setError(''), 5000);
