@@ -2,6 +2,7 @@
   "name": "workout-tracker",
   "version": "0.1.0",
   "private": true,
+  "homepage": "https://lzanetic.github.io/workout-tracker",
   "dependencies": {
     "@capacitor/android": "^6.1.2",
     "@capacitor/core": "^6.1.2",
@@ -26,10 +27,13 @@
     "test": "react-scripts test",
     "eject": "react-scripts eject",
     "cap:sync": "npm run build && npx cap sync",
-    "cap:open:android": "npx cap open android"
+    "cap:open:android": "npx cap open android",
+    "predeploy": "npm run build",
+    "deploy": "gh-pages -d build"
   },
   "devDependencies": {
-    "@capacitor/cli": "^6.1.2"
+    "@capacitor/cli": "^6.1.2",
+    "gh-pages": "^6.2.0"
   },
   "eslintConfig": {
     "extends": [

@@ -2,6 +2,8 @@
 
 A mobile-first workout tracking app built with React. Create training blocks, log workouts with sets/reps/weight/RPE, and view history. Supports both block-based programs and standalone day-based plans.
 
+**Live demo:** [https://lzanetic.github.io/workout-tracker](https://lzanetic.github.io/workout-tracker)
+
 ## Features
 
 ### Training blocks
@@ -75,6 +77,8 @@ npm run build
 ```
 
 **Environment (optional):** Copy `.env.example` to `.env`. Set `REACT_APP_USE_API=true` to use the backend; set to `false` for local-only. Set `REACT_APP_API_URL` if your API is not at `http://localhost:8080/api`. On the Android app, the API is auto-disabled when the URL is localhost so the app works without a server.
+
+To update the live demo after code changes: `npm run deploy`.
 
 ### Android app (Capacitor — build an APK for your phone)
 

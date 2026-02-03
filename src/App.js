@@ -24,9 +24,14 @@ function App() {
     );
   }
 
+  // For GitHub Pages: app is at https://<user>.github.io/<repo>/ so Router needs basename (CRA sets PUBLIC_URL from homepage)
+  const pub = process.env.PUBLIC_URL || '';
+  const basePath = pub.startsWith('http') ? new URL(pub).pathname.replace(/\/$/, '') : '';
+  const basename = typeof window !== 'undefined' && window.location.hostname === 'localhost' ? '' : basePath;
+
   return (
     <WorkoutProvider>
-      <Router>
+      <Router basename={basename}>
         <Routes>
           <Route path="/" element={<Home />} />
           {/* Legacy routes for backward compatibility */}
