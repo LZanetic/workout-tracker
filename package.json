@@ -26,13 +26,14 @@
     "build": "react-scripts build",
     "test": "react-scripts test",
     "eject": "react-scripts eject",
-    "cap:sync": "npm run build && npx cap sync",
+    "cap:sync": "cross-env PUBLIC_URL=/ npm run build && npx cap sync",
     "cap:open:android": "npx cap open android",
     "predeploy": "npm run build",
     "deploy": "npx gh-pages -d build"
   },
   "devDependencies": {
     "@capacitor/cli": "^6.1.2",
+    "cross-env": "^7.0.3",
     "gh-pages": "^6.2.0"
   },
   "eslintConfig": {

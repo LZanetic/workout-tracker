@@ -8,6 +8,7 @@ import History from './components/History';
 import BlockSelector from './components/BlockSelector';
 import BlockSetup from './components/BlockSetup';
 import WeekSelector from './components/WeekSelector';
+import StandaloneSetup from './components/StandaloneSetup';
 
 function App() {
   const [storageReady, setStorageReady] = useState(false);
@@ -34,9 +35,8 @@ function App() {
       <Router basename={basename}>
         <Routes>
           <Route path="/" element={<Home />} />
-          {/* Legacy routes for backward compatibility */}
+          <Route path="/plan" element={<StandaloneSetup />} />
           <Route path="/day/:dayNumber" element={<DayView />} />
-          {/* New block-based routes */}
           <Route path="/blocks" element={<BlockSelector />} />
           <Route path="/block/setup" element={<BlockSetup />} />
           <Route path="/block/:blockId" element={<WeekSelector />} />
