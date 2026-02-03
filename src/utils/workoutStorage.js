@@ -1,115 +1,191 @@
 /**
- * Utility functions for storing and retrieving workout logs and training blocks from localStorage
+ * Storage for workout logs, training blocks, and workouts by day.
+ * On Android/iOS (Capacitor) uses @capacitor/preferences for reliable persistence.
+ * On web uses localStorage.
  */
 
 const STORAGE_KEY = 'workout_logs';
 const BLOCKS_STORAGE_KEY = 'training_blocks';
 const WORKOUTS_BY_DAY_KEY = 'workouts_by_day';
+export const STANDALONE_BLOCK_ID_KEY = 'workout_standalone_block_id';
+
+// In-memory cache for native (Android/iOS); populated by initStorage()
+const cache = {
+  [STORAGE_KEY]: null,
+  [BLOCKS_STORAGE_KEY]: null,
+  [WORKOUTS_BY_DAY_KEY]: null,
+  [STANDALONE_BLOCK_ID_KEY]: null
+};
+
+let useNativeStorage = false;
+let Preferences = null;
+
+function isNative() {
+  if (typeof window === 'undefined' || !window.Capacitor) return false;
+  const p = window.Capacitor.getPlatform();
+  return p === 'android' || p === 'ios';
+}
+
+async function initNativeStorage() {
+  try {
+    const mod = await import('@capacitor/preferences');
+    Preferences = mod.Preferences;
+    useNativeStorage = true;
+    const keys = [STORAGE_KEY, BLOCKS_STORAGE_KEY, WORKOUTS_BY_DAY_KEY, STANDALONE_BLOCK_ID_KEY];
+    for (const key of keys) {
+      const { value } = await Preferences.get({ key });
+      if (value != null) cache[key] = value;
+    }
+  } catch (e) {
+    console.warn('Capacitor Preferences not available, using localStorage:', e);
+  }
+}
+
+function parse(key, value) {
+  if (value === null || value === undefined) return value;
+  if (key === STANDALONE_BLOCK_ID_KEY) return value;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return value;
+  }
+}
+
+function getFromStorage(key) {
+  if (useNativeStorage) {
+    const raw = cache[key];
+    if (raw === null || raw === undefined) {
+      if (key === WORKOUTS_BY_DAY_KEY || key === STANDALONE_BLOCK_ID_KEY) return null;
+      return [];
+    }
+    return key === STANDALONE_BLOCK_ID_KEY ? raw : parse(key, raw);
+  }
+  try {
+    const raw = localStorage.getItem(key);
+    if (key === STANDALONE_BLOCK_ID_KEY) return raw;
+    return raw ? JSON.parse(raw) : (key === WORKOUTS_BY_DAY_KEY ? null : []);
+  } catch {
+    return key === WORKOUTS_BY_DAY_KEY ? null : [];
+  }
+}
+
+function setInStorage(key, value) {
+  const serialized = key === STANDALONE_BLOCK_ID_KEY ? String(value) : JSON.stringify(value);
+  if (useNativeStorage && Preferences) {
+    cache[key] = serialized;
+    Preferences.set({ key, value: serialized }).catch((e) => console.warn('Preferences.set failed:', e));
+    return;
+  }
+  try {
+    if (value == null && key !== STANDALONE_BLOCK_ID_KEY) localStorage.removeItem(key);
+    else localStorage.setItem(key, serialized);
+  } catch (error) {
+    console.error('Storage set failed:', error);
+    throw new Error('Failed to save');
+  }
+}
+
+function removeFromStorage(key) {
+  if (useNativeStorage && Preferences) {
+    cache[key] = null;
+    Preferences.remove({ key }).catch((e) => console.warn('Preferences.remove failed:', e));
+    return;
+  }
+  try {
+    localStorage.removeItem(key);
+  } catch (e) {
+    console.warn('Storage remove failed:', e);
+  }
+}
 
 /**
- * Save a completed workout to localStorage
- * @param {Object} workoutLog - The workout log object to save
- * @returns {void}
+ * Call once before using storage (e.g. in App mount). On native loads from Preferences into cache.
+ * @returns {Promise<void>}
  */
+export async function initStorage() {
+  if (isNative()) await initNativeStorage();
+}
+
 export const saveWorkoutLog = (workoutLog) => {
   try {
     const existingLogs = getWorkoutLogs();
     const updatedLogs = [...existingLogs, workoutLog];
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedLogs));
+    setInStorage(STORAGE_KEY, updatedLogs);
   } catch (error) {
     console.error('Error saving workout log:', error);
     throw new Error('Failed to save workout log');
   }
 };
 
-/**
- * Get all workout logs from localStorage
- * @returns {Array} Array of workout logs
- */
 export const getWorkoutLogs = () => {
   try {
-    const logs = localStorage.getItem(STORAGE_KEY);
-    return logs ? JSON.parse(logs) : [];
+    const logs = getFromStorage(STORAGE_KEY);
+    return Array.isArray(logs) ? logs : [];
   } catch (error) {
     console.error('Error reading workout logs:', error);
     return [];
   }
 };
 
-/**
- * Clear all workout logs from localStorage
- * @returns {void}
- */
+/** Replace all workout logs (used by api.js deleteWorkoutLocal) */
+export const setWorkoutLogs = (logs) => {
+  try {
+    setInStorage(STORAGE_KEY, Array.isArray(logs) ? logs : []);
+  } catch (error) {
+    console.error('Error setting workout logs:', error);
+    throw new Error('Failed to save workout logs');
+  }
+};
+
 export const clearWorkoutLogs = () => {
   try {
-    localStorage.removeItem(STORAGE_KEY);
+    removeFromStorage(STORAGE_KEY);
   } catch (error) {
     console.error('Error clearing workout logs:', error);
   }
 };
 
-/**
- * Save a training block to localStorage
- * @param {Object} block - The training block object to save
- * @returns {void}
- */
 export const saveTrainingBlock = (block) => {
   try {
     const existingBlocks = getTrainingBlocks();
     const updatedBlocks = [...existingBlocks, block];
-    localStorage.setItem(BLOCKS_STORAGE_KEY, JSON.stringify(updatedBlocks));
+    setInStorage(BLOCKS_STORAGE_KEY, updatedBlocks);
   } catch (error) {
     console.error('Error saving training block:', error);
     throw new Error('Failed to save training block');
   }
 };
 
-/**
- * Get all training blocks from localStorage
- * @returns {Array} Array of training blocks
- */
 export const getTrainingBlocks = () => {
   try {
-    const blocks = localStorage.getItem(BLOCKS_STORAGE_KEY);
-    return blocks ? JSON.parse(blocks) : [];
+    const blocks = getFromStorage(BLOCKS_STORAGE_KEY);
+    return Array.isArray(blocks) ? blocks : [];
   } catch (error) {
     console.error('Error reading training blocks:', error);
     return [];
   }
 };
 
-/**
- * Get a specific training block by ID
- * @param {number} blockId - The block ID
- * @returns {Object|null} The training block or null if not found
- */
 export const getTrainingBlock = (blockId) => {
   try {
+    const idNum = Number(blockId);
+    if (Number.isNaN(idNum)) return null;
     const blocks = getTrainingBlocks();
-    return blocks.find(block => block.blockId === blockId) || null;
+    return blocks.find(block => Number(block.blockId ?? block.id) === idNum) || null;
   } catch (error) {
     console.error('Error reading training block:', error);
     return null;
   }
 };
 
-/**
- * Clear all training blocks from localStorage
- * @returns {void}
- */
 export const clearTrainingBlocks = () => {
   try {
-    localStorage.removeItem(BLOCKS_STORAGE_KEY);
+    removeFromStorage(BLOCKS_STORAGE_KEY);
   } catch (error) {
     console.error('Error clearing training blocks:', error);
   }
 };
 
-/**
- * Delete a specific training block by ID
- * @param {number} blockId - The block ID to delete
- * @returns {void}
- */
 export const deleteTrainingBlock = (blockId) => {
   try {
     const idNum = Number(blockId);
@@ -117,84 +193,82 @@ export const deleteTrainingBlock = (blockId) => {
     const updatedBlocks = blocks.filter(
       block => Number(block.blockId ?? block.id) !== idNum
     );
-    localStorage.setItem(BLOCKS_STORAGE_KEY, JSON.stringify(updatedBlocks));
+    setInStorage(BLOCKS_STORAGE_KEY, updatedBlocks);
   } catch (error) {
     console.error('Error deleting training block:', error);
     throw new Error('Failed to delete training block');
   }
 };
 
-/**
- * Delete a specific workout log by index
- * @param {number} index - The index of the workout log to delete
- * @returns {void}
- */
 export const deleteWorkoutLog = (index) => {
   try {
     const logs = getWorkoutLogs();
     const updatedLogs = logs.filter((_, i) => i !== index);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedLogs));
+    setInStorage(STORAGE_KEY, updatedLogs);
   } catch (error) {
     console.error('Error deleting workout log:', error);
     throw new Error('Failed to delete workout log');
   }
 };
 
-/**
- * Update a training block (for editing exercises, days, weeks)
- * @param {Object} updatedBlock - The updated training block
- * @returns {void}
- */
 export const updateTrainingBlock = (updatedBlock) => {
   try {
+    const updatedId = Number(updatedBlock.blockId ?? updatedBlock.id);
+    if (Number.isNaN(updatedId)) throw new Error('Invalid block id');
     const blocks = getTrainingBlocks();
-    const updatedBlocks = blocks.map(block => 
-      block.blockId === updatedBlock.blockId ? updatedBlock : block
+    const updatedBlocks = blocks.map(block =>
+      Number(block.blockId ?? block.id) === updatedId ? updatedBlock : block
     );
-    localStorage.setItem(BLOCKS_STORAGE_KEY, JSON.stringify(updatedBlocks));
+    setInStorage(BLOCKS_STORAGE_KEY, updatedBlocks);
   } catch (error) {
     console.error('Error updating training block:', error);
     throw new Error('Failed to update training block');
   }
 };
 
-/**
- * Save workoutsByDay to localStorage
- * @param {Object} workoutsByDay - The workouts by day object
- * @returns {void}
- */
 export const saveWorkoutsByDay = (workoutsByDay) => {
   try {
-    localStorage.setItem(WORKOUTS_BY_DAY_KEY, JSON.stringify(workoutsByDay));
+    setInStorage(WORKOUTS_BY_DAY_KEY, workoutsByDay);
   } catch (error) {
     console.error('Error saving workouts by day:', error);
     throw new Error('Failed to save workouts by day');
   }
 };
 
-/**
- * Get workoutsByDay from localStorage
- * @returns {Object|null} The workouts by day object or null if not found
- */
 export const getWorkoutsByDay = () => {
   try {
-    const data = localStorage.getItem(WORKOUTS_BY_DAY_KEY);
-    return data ? JSON.parse(data) : null;
+    const data = getFromStorage(WORKOUTS_BY_DAY_KEY);
+    return data && typeof data === 'object' && !Array.isArray(data) ? data : null;
   } catch (error) {
     console.error('Error reading workouts by day:', error);
     return null;
   }
 };
 
-/**
- * Clear workoutsByDay from localStorage
- * @returns {void}
- */
 export const clearWorkoutsByDay = () => {
   try {
-    localStorage.removeItem(WORKOUTS_BY_DAY_KEY);
+    removeFromStorage(WORKOUTS_BY_DAY_KEY);
   } catch (error) {
     console.error('Error clearing workouts by day:', error);
   }
 };
 
+export const getStandaloneBlockId = () => {
+  try {
+    const raw = getFromStorage(STANDALONE_BLOCK_ID_KEY);
+    if (raw == null || raw === '') return null;
+    const n = parseInt(raw, 10);
+    return Number.isFinite(n) ? n : null;
+  } catch {
+    return null;
+  }
+};
+
+export const setStandaloneBlockId = (id) => {
+  try {
+    if (id != null) setInStorage(STANDALONE_BLOCK_ID_KEY, String(id));
+    else removeFromStorage(STANDALONE_BLOCK_ID_KEY);
+  } catch (e) {
+    console.warn('setStandaloneBlockId failed:', e);
+  }
+};

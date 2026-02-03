@@ -1,10 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { Dumbbell, LayoutList, History, Upload, PenLine, Calendar } from 'lucide-react';
-import FileUpload from './FileUpload';
-import { parseCSV } from '../utils/csvParser';
+import { Dumbbell, LayoutList, History, PenLine, Calendar } from 'lucide-react';
 import { useWorkout } from '../context/WorkoutContext';
-import { getWorkoutLogs, getTrainingBlock, saveWorkoutsByDay, clearWorkoutsByDay } from '../utils/workoutStorage';
+import { getWorkoutLogs, getTrainingBlock, saveWorkoutsByDay } from '../utils/workoutStorage';
 import { ensureStandaloneBlock, deleteBlock } from '../services/api';
 import ExerciseForm from './ExerciseForm';
 import DayBuilder from './DayBuilder';
@@ -13,7 +11,6 @@ const Home = () => {
   const { workoutsByDay, setWorkoutsByDay, standaloneBlockId, setStandaloneBlockId } = useWorkout();
   const [error, setError] = useState('');
   const [currentWeek, setCurrentWeek] = useState(null);
-  const [inputMethod, setInputMethod] = useState('csv'); // 'csv' or 'manual'
   const navigate = useNavigate();
 
   // Manual builder state
@@ -50,31 +47,6 @@ const Home = () => {
       }
     }
   }, []);
-
-  const handleFileUpload = async (csvText) => {
-    setError('');
-    try {
-      const parsed = parseCSV(csvText);
-      // Override existing standalone: delete old block if any, then create new one
-      if (standaloneBlockId != null) {
-        try {
-          await deleteBlock(standaloneBlockId);
-        } catch (_) { /* block may already be gone */ }
-        setStandaloneBlockId(null);
-      }
-      const newId = await ensureStandaloneBlock(parsed, null);
-      if (newId != null) setStandaloneBlockId(newId);
-      setWorkoutsByDay(parsed);
-      saveWorkoutsByDay(parsed);
-      setError('');
-      const days = Object.keys(parsed).map(d => parseInt(d, 10)).sort((a, b) => a - b);
-      if (days.length > 0) navigate(`/day/${days[0]}`);
-    } catch (err) {
-      setError(err.message);
-      setWorkoutsByDay(null);
-      clearWorkoutsByDay();
-    }
-  };
 
   const handleAddExercise = (dayNumber) => {
     setCurrentDayForForm(dayNumber);
@@ -226,81 +198,38 @@ const Home = () => {
     <div className="min-h-screen bg-gray-900 p-4">
       <div className="max-w-4xl mx-auto space-y-6">
         <div className="bg-gray-800 rounded-2xl shadow-xl border border-gray-700 p-6 md:p-8">
-          <div className="flex justify-between items-center mb-4">
-            <h1 className="text-3xl font-bold text-gray-100 flex items-center gap-3">
-              <Dumbbell className="w-9 h-9 text-amber-500" />
+          <div className="flex flex-wrap justify-between items-center gap-3 mb-4">
+            <h1 className="text-2xl sm:text-3xl font-bold text-gray-100 flex items-center gap-2 sm:gap-3 shrink-0">
+              <Dumbbell className="w-8 h-8 sm:w-9 sm:h-9 text-amber-500" />
               Workout Tracker
             </h1>
-            <div className="flex gap-2">
+            <div className="flex gap-2 shrink-0 min-w-0">
               <Link
                 to="/blocks"
-                className="px-4 py-2 bg-amber-500 text-gray-900 rounded-xl hover:bg-amber-400 font-semibold transition-colors flex items-center gap-2"
+                className="px-3 sm:px-4 py-2 bg-amber-500 text-gray-900 rounded-xl hover:bg-amber-400 font-semibold transition-colors flex items-center gap-1.5 sm:gap-2 text-sm sm:text-base whitespace-nowrap"
               >
-                <LayoutList className="w-5 h-5" />
+                <LayoutList className="w-5 h-5 shrink-0" />
                 Blocks
               </Link>
               <Link
                 to="/history"
-                className="px-4 py-2 bg-gray-700 text-gray-200 rounded-xl hover:bg-gray-600 font-medium transition-colors flex items-center gap-2 border border-gray-600"
+                className="px-3 sm:px-4 py-2 bg-gray-700 text-gray-200 rounded-xl hover:bg-gray-600 font-medium transition-colors flex items-center gap-1.5 sm:gap-2 border border-gray-600 text-sm sm:text-base whitespace-nowrap"
               >
-                <History className="w-5 h-5" />
+                <History className="w-5 h-5 shrink-0" />
                 History
               </Link>
             </div>
           </div>
           <p className="text-gray-400 text-center mb-8">
-            Upload your workout CSV file or build manually to get started
+            Build your workout program to get started
           </p>
 
-          {/* Method Selection */}
-          <div className="mb-6">
-            <h2 className="text-xl font-semibold text-gray-200 mb-4">Input Method</h2>
-            <div className="grid grid-cols-2 gap-3">
-              <button
-                onClick={() => {
-                  setInputMethod('csv');
-                  setError('');
-                }}
-                className={`px-4 py-4 rounded-xl font-bold text-lg transition-all min-h-[56px] flex items-center justify-center gap-2 ${
-                  inputMethod === 'csv'
-                    ? 'bg-amber-500 text-gray-900 shadow-lg'
-                    : 'bg-gray-700 text-gray-300 hover:bg-gray-600 border border-gray-600'
-                }`}
-              >
-                <Upload className="w-6 h-6" />
-                CSV Upload
-              </button>
-              <button
-                onClick={() => {
-                  setInputMethod('manual');
-                  setError('');
-                }}
-                className={`px-4 py-4 rounded-xl font-bold text-lg transition-all min-h-[56px] flex items-center justify-center gap-2 ${
-                  inputMethod === 'manual'
-                    ? 'bg-amber-500 text-gray-900 shadow-lg'
-                    : 'bg-gray-700 text-gray-300 hover:bg-gray-600 border border-gray-600'
-                }`}
-              >
-                <PenLine className="w-6 h-6" />
-                Manual Builder
-              </button>
-            </div>
-          </div>
-
-          {/* CSV Upload Method */}
-          {inputMethod === 'csv' && (
-            <div>
-              <FileUpload 
-                onFileUpload={handleFileUpload}
-                onFileSelect={() => setError('')}
-              />
-            </div>
-          )}
-
-          {/* Manual Builder Method */}
-          {inputMethod === 'manual' && (
-            <div className="space-y-6">
-              <h2 className="text-xl font-semibold text-gray-200 mb-4">Build Your Workout Program</h2>
+          {/* Manual Builder */}
+          <div className="space-y-6">
+            <h2 className="text-xl font-semibold text-gray-200 mb-4 flex items-center gap-2">
+              <PenLine className="w-6 h-6 text-amber-500" />
+              Build Your Workout Program
+            </h2>
               
               {/* Days Control */}
               <div className="bg-gray-700/50 rounded-xl p-4 mb-6 border border-gray-600">
@@ -369,7 +298,6 @@ const Home = () => {
                 Save Workout Program
               </button>
             </div>
-          )}
 
           {error && (
             <div className="mt-4 p-4 bg-red-900/30 border border-red-700 rounded-xl text-red-300">

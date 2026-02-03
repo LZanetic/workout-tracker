@@ -3,7 +3,8 @@ import { useParams, Link } from 'react-router-dom';
 import { Home, History, ChevronLeft, Dumbbell, Loader2 } from 'lucide-react';
 import { useWorkout } from '../context/WorkoutContext';
 import { saveWorkoutLog, getTrainingBlock, updateTrainingBlock, saveWorkoutsByDay, getWorkoutLogs } from '../utils/workoutStorage';
-import { getBlock, getWorkout, logWorkout, deleteExercise, ensureStandaloneBlock } from '../services/api';
+import { getBlock, getWorkout, getBlockProgress, logWorkout, deleteExercise, ensureStandaloneBlock } from '../services/api';
+import { getNormalizedDaysArray } from '../utils/blockProgression';
 
 const DayView = () => {
   const { workoutsByDay, setWorkoutsByDay, standaloneBlockId, setStandaloneBlockId } = useWorkout();
@@ -14,7 +15,7 @@ const DayView = () => {
   const isLegacyRoute = !blockId && dayNumber != null;
   const effectiveBlockId = blockId ? parseInt(blockId, 10) : (isLegacyRoute ? standaloneBlockId : null);
   const effectiveWeek = week ?? (isLegacyRoute ? 1 : null);
-  const effectiveDay = day;
+  const effectiveDay = Number.isFinite(day) ? day : 1;
 
   // Block mode = we have a block (from URL or standalone) and use block API
   const isBlockMode = effectiveBlockId != null && effectiveWeek != null && effectiveDay != null;
@@ -55,11 +56,11 @@ const DayView = () => {
 
   // Load saved legacy workout from localStorage only when not using standalone block
   useEffect(() => {
-    if (isBlockMode || (isLegacyRoute && standaloneBlockId) || !day || !workoutsByDay || !workoutsByDay[day]?.length) return;
+    if (isBlockMode || (isLegacyRoute && standaloneBlockId) || !effectiveDay || !workoutsByDay || !workoutsByDay[effectiveDay]?.length) return;
     const logs = getWorkoutLogs();
     const dayLogs = logs.filter(
       (log) =>
-        (log.day === day || log.dayNumber === day) &&
+        (log.day === effectiveDay || log.dayNumber === effectiveDay) &&
         (log.blockId == null || Number.isNaN(log.blockId))
     );
     if (dayLogs.length === 0) return;
@@ -67,7 +68,7 @@ const DayView = () => {
       (a, b) => new Date(b.timestamp || 0) - new Date(a.timestamp || 0)
     )[0];
     if (!mostRecent?.exercises?.length) return;
-    const exercisesForDay = workoutsByDay[day] || [];
+    const exercisesForDay = workoutsByDay[effectiveDay] || [];
     const newCompleted = {};
     const newWorkoutLog = {};
     const newLogging = {};
@@ -87,25 +88,29 @@ const DayView = () => {
       newWorkoutLog[exIndex] = sets;
     });
     if (Object.keys(newCompleted).length === 0) return;
-    setCompletedExercises((prev) => ({ ...prev, [day]: { ...(prev[day] || {}), ...newCompleted } }));
-    setWorkoutLog((prev) => ({ ...prev, [day]: { ...(prev[day] || {}), ...newWorkoutLog } }));
-    setLoggingExercises((prev) => ({ ...prev, [day]: { ...(prev[day] || {}), ...newLogging } }));
-  }, [day, workoutsByDay, isBlockMode, isLegacyRoute, standaloneBlockId]);
+    setCompletedExercises((prev) => ({ ...prev, [effectiveDay]: { ...(prev[effectiveDay] || {}), ...newCompleted } }));
+    setWorkoutLog((prev) => ({ ...prev, [effectiveDay]: { ...(prev[effectiveDay] || {}), ...newWorkoutLog } }));
+    setLoggingExercises((prev) => ({ ...prev, [effectiveDay]: { ...(prev[effectiveDay] || {}), ...newLogging } }));
+  }, [effectiveDay, workoutsByDay, isBlockMode, isLegacyRoute, standaloneBlockId]);
 
   // Load saved workout from API so completed exercises/show state persist when reopening the day
   useEffect(() => {
     if (!isBlockMode || effectiveBlockId == null || effectiveWeek == null || effectiveDay == null || !block) return;
     const loadSavedWorkout = async () => {
       try {
-        const saved = await getWorkout(effectiveBlockId, effectiveWeek, effectiveDay);
+        let saved = await getWorkout(effectiveBlockId, effectiveWeek, effectiveDay);
+        // Fallback: use progress (same source as History) so block view shows completed when getWorkout returns null
+        if ((!saved || !saved.exercises || saved.exercises.length === 0)) {
+          const progress = await getBlockProgress(effectiveBlockId).catch(() => []);
+          const match = Array.isArray(progress) && progress.find(
+            (w) => (w.weekNumber === effectiveWeek || w.week === effectiveWeek) && (w.dayNumber === effectiveDay || w.day === effectiveDay)
+          );
+          if (match) saved = match;
+        }
         if (!saved || !saved.exercises || saved.exercises.length === 0) return;
         const currentWeekData = block.weeks?.find(w => w.weekNumber === effectiveWeek);
         if (!currentWeekData) return;
-        const daysArray = Array.isArray(currentWeekData.days)
-          ? currentWeekData.days
-          : currentWeekData.days && typeof currentWeekData.days === 'object'
-            ? Object.values(currentWeekData.days).sort((a, b) => (a.dayNumber || 0) - (b.dayNumber || 0))
-            : [];
+        const daysArray = getNormalizedDaysArray(currentWeekData.days);
         const dayData = daysArray.find(d => d.dayNumber === effectiveDay);
         if (!dayData || !dayData.exercises) return;
         const exercisesForDay = dayData.exercises.map(normalizeExercise);
@@ -128,15 +133,15 @@ const DayView = () => {
           newWorkoutLog[exIndex] = sets;
         });
         if (Object.keys(newCompleted).length === 0) return;
-        setCompletedExercises((prev) => ({ ...prev, [day]: { ...(prev[day] || {}), ...newCompleted } }));
-        setWorkoutLog((prev) => ({ ...prev, [day]: { ...(prev[day] || {}), ...newWorkoutLog } }));
-        setLoggingExercises((prev) => ({ ...prev, [day]: { ...(prev[day] || {}), ...newLogging } }));
+        setCompletedExercises((prev) => ({ ...prev, [effectiveDay]: { ...(prev[effectiveDay] || {}), ...newCompleted } }));
+        setWorkoutLog((prev) => ({ ...prev, [effectiveDay]: { ...(prev[effectiveDay] || {}), ...newWorkoutLog } }));
+        setLoggingExercises((prev) => ({ ...prev, [effectiveDay]: { ...(prev[effectiveDay] || {}), ...newLogging } }));
       } catch (err) {
         console.warn('Could not load saved workout for day:', err);
       }
     };
     loadSavedWorkout();
-  }, [effectiveBlockId, effectiveWeek, effectiveDay, block, isBlockMode, day]);
+  }, [effectiveBlockId, effectiveWeek, effectiveDay, block, isBlockMode]);
 
   // State keyed by day number to maintain separate state for each day
   const [loggingExercises, setLoggingExercises] = useState({}); // { day: { exIndex: true } }
@@ -148,6 +153,13 @@ const DayView = () => {
   const [isSavingWorkout, setIsSavingWorkout] = useState(false);
 
   // Normalize exercise from API format to frontend format
+  /** Format load for display: round to nearest 0.5 kg, no trailing .0 for integers */
+  const formatLoad = (v) => {
+    if (v == null || v === '' || !Number.isFinite(Number(v))) return '';
+    const r = Math.round(Number(v) * 2) / 2;
+    return r % 1 === 0 ? String(r) : r.toFixed(1);
+  };
+
   const normalizeExercise = (exercise) => {
     // If already in frontend format (localStorage), return as is
     if (exercise.Exercise || exercise.Sets) {
@@ -179,11 +191,7 @@ const DayView = () => {
     if (isBlockMode && block) {
       const currentWeekData = block.weeks?.find(w => w.weekNumber === effectiveWeek);
       if (currentWeekData) {
-        const daysArr = Array.isArray(currentWeekData.days)
-          ? currentWeekData.days
-          : currentWeekData.days && typeof currentWeekData.days === 'object'
-            ? Object.values(currentWeekData.days).sort((a, b) => (a.dayNumber || 0) - (b.dayNumber || 0))
-            : [];
+        const daysArr = getNormalizedDaysArray(currentWeekData.days);
         const dayData = daysArr.find(d => d.dayNumber === effectiveDay);
         if (dayData && dayData.exercises) {
           return dayData.exercises.map(normalizeExercise);
@@ -200,11 +208,7 @@ const DayView = () => {
     if (isBlockMode && block) {
       const currentWeekData = block.weeks?.find(w => w.weekNumber === effectiveWeek);
       if (currentWeekData) {
-        const daysArr = Array.isArray(currentWeekData.days)
-          ? currentWeekData.days
-          : currentWeekData.days && typeof currentWeekData.days === 'object'
-            ? Object.values(currentWeekData.days).sort((a, b) => (a.dayNumber || 0) - (b.dayNumber || 0))
-            : [];
+        const daysArr = getNormalizedDaysArray(currentWeekData.days);
         return daysArr.map(d => d.dayNumber).sort((a, b) => a - b);
       }
     } else if (workoutsByDay) {
@@ -219,9 +223,9 @@ const DayView = () => {
   const allDays = getAllDays();
 
   // Get current day's state (default to empty objects if day doesn't exist)
-  const currentDayLogging = loggingExercises[day] || {};
-  const currentDayWorkoutLog = workoutLog[day] || {};
-  const currentDayCompleted = completedExercises[day] || {};
+  const currentDayLogging = loggingExercises[effectiveDay] || {};
+  const currentDayWorkoutLog = workoutLog[effectiveDay] || {};
+  const currentDayCompleted = completedExercises[effectiveDay] || {};
 
   // Helper function to get previous week's workout data for comparison
   const getPreviousWeekData = (exerciseName, currentWeekNum, currentDayNum, currentBlockId) => {
@@ -319,7 +323,7 @@ const DayView = () => {
           </div>
           <div className="bg-gray-800 rounded-2xl shadow-xl border border-gray-700 p-8 text-center">
             <h1 className="text-4xl font-bold text-gray-100 mb-2">No workout data</h1>
-            <p className="text-lg text-gray-400 mb-4">Please create a training block or upload a CSV file.</p>
+            <p className="text-lg text-gray-400 mb-4">Please create a training block.</p>
             <Link
               to="/blocks"
               className="inline-block px-6 py-3 bg-amber-500 text-gray-900 rounded-xl font-bold text-base hover:bg-amber-400 transition-colors"
@@ -425,7 +429,7 @@ const DayView = () => {
                   : `/day/${d}`
                 }
                 className={`flex-shrink-0 px-5 py-3 rounded-xl font-bold text-base transition-all min-h-[44px] flex items-center justify-center ${
-                  d === day
+                  d === effectiveDay
                     ? 'bg-amber-500 text-gray-900 shadow-lg scale-105'
                     : 'bg-gray-700 text-gray-300 active:bg-gray-600'
                 }`}
@@ -496,7 +500,7 @@ const DayView = () => {
             <Dumbbell className="w-9 h-9 text-amber-500" />
             {isBlockMode
               ? (effectiveBlockId === standaloneBlockId ? `My Workouts - Day ${effectiveDay}` : `Block ${effectiveBlockId} - Week ${effectiveWeek} - Day ${effectiveDay}`)
-              : `Day ${day}`}
+              : `Day ${effectiveDay}`}
           </h1>
           {isBlockMode && block && effectiveBlockId !== standaloneBlockId && (
             <p className="text-base text-gray-500 mb-2">
@@ -509,12 +513,12 @@ const DayView = () => {
         {/* Exercise Cards - Larger spacing and touch targets */}
         <div className="space-y-6">
           {exercises.map((exercise, exIndex) => {
-            const loadRange = exercise.LoadMin && exercise.LoadMax
-              ? `${exercise.LoadMin}-${exercise.LoadMax} kg`
-              : exercise.LoadMin
-              ? `${exercise.LoadMin} kg`
-              : exercise.LoadMax
-              ? `${exercise.LoadMax} kg`
+            const loadRange = exercise.LoadMin != null && exercise.LoadMax != null
+              ? `${formatLoad(exercise.LoadMin)}-${formatLoad(exercise.LoadMax)} kg`
+              : exercise.LoadMin != null
+              ? `${formatLoad(exercise.LoadMin)} kg`
+              : exercise.LoadMax != null
+              ? `${formatLoad(exercise.LoadMax)} kg`
               : null;
 
             const sets = currentDayWorkoutLog[exIndex] || [];
@@ -538,8 +542,8 @@ const DayView = () => {
                           const weeksArray = block.weeks || [];
                           const exerciseIdsToDelete = [];
                           for (const w of weeksArray) {
-                            const daysArray = Array.isArray(w.days) ? w.days : (w.days && typeof w.days === 'object' ? Object.values(w.days).sort((a, b) => (a.dayNumber || 0) - (b.dayNumber || 0)) : []);
-                            const dayData = daysArray.find(d => d.dayNumber === day);
+                            const daysArray = getNormalizedDaysArray(w.days);
+                            const dayData = daysArray.find(d => d.dayNumber === effectiveDay);
                             const ex = dayData?.exercises?.[exIndex];
                             if (ex?.id) exerciseIdsToDelete.push(ex.id);
                           }
@@ -551,20 +555,25 @@ const DayView = () => {
                           // Update local block: remove exercise at exIndex from this day in all weeks
                           const updatedBlock = JSON.parse(JSON.stringify(block));
                           (updatedBlock.weeks || []).forEach(w => {
-                            const daysArr = Array.isArray(w.days) ? w.days : (w.days && typeof w.days === 'object' ? Object.values(w.days).sort((a, b) => (a.dayNumber || 0) - (b.dayNumber || 0)) : []);
-                            const dayData = daysArr.find(d => d.dayNumber === day);
-                            if (dayData && dayData.exercises) {
-                              dayData.exercises = dayData.exercises.filter((_, idx) => idx !== exIndex);
-                            }
+                            const daysArr = getNormalizedDaysArray(w.days);
+                            const updatedDays = {};
+                            daysArr.forEach(({ dayNumber, exercises }) => {
+                              if (dayNumber === effectiveDay) {
+                                updatedDays[dayNumber] = exercises.filter((_, idx) => idx !== exIndex);
+                              } else {
+                                updatedDays[dayNumber] = exercises;
+                              }
+                            });
+                            w.days = updatedDays;
                           });
                           updateTrainingBlock(updatedBlock);
                           setBlock(updatedBlock);
                         } else if (workoutsByDay) {
                           // Legacy mode: remove from workoutsByDay only
                           const updatedWorkoutsByDay = { ...workoutsByDay };
-                          if (updatedWorkoutsByDay[day]) {
-                            updatedWorkoutsByDay[day] = updatedWorkoutsByDay[day].filter((_, idx) => idx !== exIndex);
-                            if (updatedWorkoutsByDay[day].length === 0) delete updatedWorkoutsByDay[day];
+                          if (updatedWorkoutsByDay[effectiveDay]) {
+                            updatedWorkoutsByDay[effectiveDay] = updatedWorkoutsByDay[effectiveDay].filter((_, idx) => idx !== exIndex);
+                            if (updatedWorkoutsByDay[effectiveDay].length === 0) delete updatedWorkoutsByDay[effectiveDay];
                             saveWorkoutsByDay(updatedWorkoutsByDay);
                             setWorkoutsByDay(updatedWorkoutsByDay);
                           }
@@ -623,13 +632,8 @@ const DayView = () => {
                     {/* Start Exercise Button for this exercise */}
                     <button
                       onClick={() => {
-                        // Calculate pre-filled weight (use LoadMin only, or LoadMax if LoadMin doesn't exist)
-                        let prefilledWeight = '';
-                        if (exercise.LoadMin) {
-                          prefilledWeight = exercise.LoadMin.toString();
-                        } else if (exercise.LoadMax) {
-                          prefilledWeight = exercise.LoadMax.toString();
-                        }
+                        // Calculate pre-filled weight (use LoadMin only, or LoadMax if LoadMin doesn't exist), rounded to 0.5
+                        let prefilledWeight = formatLoad(exercise.LoadMin) || formatLoad(exercise.LoadMax) || '';
                         
                         // Pre-fill with target values
                         const sets = Array(exercise.Sets).fill(null).map(() => ({
@@ -642,11 +646,11 @@ const DayView = () => {
                         // Initialize logging for this exercise (keyed by day)
                         setLoggingExercises(prev => ({
                           ...prev,
-                          [day]: { ...(prev[day] || {}), [exIndex]: true }
+                          [effectiveDay]: { ...(prev[effectiveDay] || {}), [exIndex]: true }
                         }));
                         setWorkoutLog(prev => ({
                           ...prev,
-                          [day]: { ...(prev[day] || {}), [exIndex]: sets }
+                          [effectiveDay]: { ...(prev[effectiveDay] || {}), [exIndex]: sets }
                         }));
                       }}
                       className="w-full px-6 py-4 bg-emerald-600 text-white rounded-xl font-bold text-lg hover:bg-emerald-500 active:bg-emerald-700 transition-colors shadow-md min-h-[56px]"
@@ -677,7 +681,7 @@ const DayView = () => {
                               // Mark exercise as completed (keyed by day)
                               setCompletedExercises(prev => ({
                                 ...prev,
-                                [day]: { ...(prev[day] || {}), [exIndex]: true }
+                                [effectiveDay]: { ...(prev[effectiveDay] || {}), [exIndex]: true }
                               }));
                             }}
                             className="px-5 py-3 text-base bg-emerald-600 text-white rounded-xl hover:bg-emerald-500 font-bold min-h-[48px] shadow-md"
@@ -690,25 +694,25 @@ const DayView = () => {
                             // Stop logging for this exercise (keyed by day)
                             setLoggingExercises(prev => {
                               const updated = { ...prev };
-                              if (updated[day]) {
-                                updated[day] = { ...updated[day] };
-                                delete updated[day][exIndex];
+                              if (updated[effectiveDay]) {
+                                updated[effectiveDay] = { ...updated[effectiveDay] };
+                                delete updated[effectiveDay][exIndex];
                               }
                               return updated;
                             });
                             setWorkoutLog(prev => {
                               const updated = { ...prev };
-                              if (updated[day]) {
-                                updated[day] = { ...updated[day] };
-                                delete updated[day][exIndex];
+                              if (updated[effectiveDay]) {
+                                updated[effectiveDay] = { ...updated[effectiveDay] };
+                                delete updated[effectiveDay][exIndex];
                               }
                               return updated;
                             });
                             setCompletedExercises(prev => {
                               const updated = { ...prev };
-                              if (updated[day]) {
-                                updated[day] = { ...updated[day] };
-                                delete updated[day][exIndex];
+                              if (updated[effectiveDay]) {
+                                updated[effectiveDay] = { ...updated[effectiveDay] };
+                                delete updated[effectiveDay][exIndex];
                               }
                               return updated;
                             });
@@ -820,9 +824,9 @@ const DayView = () => {
                                 checked={set.completed}
                                 onChange={(e) => {
                                   const updatedLog = { ...workoutLog };
-                                  if (!updatedLog[day]) updatedLog[day] = {};
-                                  if (!updatedLog[day][exIndex]) updatedLog[day][exIndex] = [...sets];
-                                  updatedLog[day][exIndex][setIndex].completed = e.target.checked;
+                                  if (!updatedLog[effectiveDay]) updatedLog[effectiveDay] = {};
+                                  if (!updatedLog[effectiveDay][exIndex]) updatedLog[effectiveDay][exIndex] = [...sets];
+                                  updatedLog[effectiveDay][exIndex][setIndex].completed = e.target.checked;
                                   setWorkoutLog(updatedLog);
                                 }}
                                 disabled={currentDayCompleted[exIndex]}
@@ -846,9 +850,9 @@ const DayView = () => {
                                   const v = e.target.value;
                                   if (v !== '' && !/^\d*\.?\d*$/.test(v)) return;
                                   const updatedLog = { ...workoutLog };
-                                  if (!updatedLog[day]) updatedLog[day] = {};
-                                  if (!updatedLog[day][exIndex]) updatedLog[day][exIndex] = [...sets];
-                                  updatedLog[day][exIndex][setIndex].weight = v;
+                                  if (!updatedLog[effectiveDay]) updatedLog[effectiveDay] = {};
+                                  if (!updatedLog[effectiveDay][exIndex]) updatedLog[effectiveDay][exIndex] = [...sets];
+                                  updatedLog[effectiveDay][exIndex][setIndex].weight = v;
                                   setWorkoutLog(updatedLog);
                                 }}
                                 disabled={currentDayCompleted[exIndex]}
@@ -872,9 +876,9 @@ const DayView = () => {
                                   const v = e.target.value;
                                   if (v !== '' && !/^\d*$/.test(v)) return;
                                   const updatedLog = { ...workoutLog };
-                                  if (!updatedLog[day]) updatedLog[day] = {};
-                                  if (!updatedLog[day][exIndex]) updatedLog[day][exIndex] = [...sets];
-                                  updatedLog[day][exIndex][setIndex].reps = v;
+                                  if (!updatedLog[effectiveDay]) updatedLog[effectiveDay] = {};
+                                  if (!updatedLog[effectiveDay][exIndex]) updatedLog[effectiveDay][exIndex] = [...sets];
+                                  updatedLog[effectiveDay][exIndex][setIndex].reps = v;
                                   setWorkoutLog(updatedLog);
                                 }}
                                 disabled={currentDayCompleted[exIndex]}
@@ -900,9 +904,9 @@ const DayView = () => {
                                   const num = parseFloat(v);
                                   if (v !== '' && (Number.isNaN(num) || num < 1 || num > 10)) return;
                                   const updatedLog = { ...workoutLog };
-                                  if (!updatedLog[day]) updatedLog[day] = {};
-                                  if (!updatedLog[day][exIndex]) updatedLog[day][exIndex] = [...sets];
-                                  updatedLog[day][exIndex][setIndex].rpe = v;
+                                  if (!updatedLog[effectiveDay]) updatedLog[effectiveDay] = {};
+                                  if (!updatedLog[effectiveDay][exIndex]) updatedLog[effectiveDay][exIndex] = [...sets];
+                                  updatedLog[effectiveDay][exIndex][setIndex].rpe = v;
                                   setWorkoutLog(updatedLog);
                                 }}
                                 disabled={currentDayCompleted[exIndex]}
@@ -931,17 +935,17 @@ const DayView = () => {
                 // Cancel all logging for current day
                 setLoggingExercises(prev => {
                   const updated = { ...prev };
-                  delete updated[day];
+                  delete updated[effectiveDay];
                   return updated;
                 });
                 setWorkoutLog(prev => {
                   const updated = { ...prev };
-                  delete updated[day];
+                  delete updated[effectiveDay];
                   return updated;
                 });
                 setCompletedExercises(prev => {
                   const updated = { ...prev };
-                  delete updated[day];
+                  delete updated[effectiveDay];
                   return updated;
                 });
               }}
@@ -1010,7 +1014,7 @@ const DayView = () => {
                       console.warn('API call failed, using localStorage fallback:', apiError);
                       // Fallback to localStorage
                       const completedWorkout = {
-                        day,
+                        day: effectiveDay,
                         timestamp: new Date().toISOString(),
                         exercises: loggedExercises.map(ex => ({
                           exerciseName: ex.exerciseName,
@@ -1026,7 +1030,7 @@ const DayView = () => {
                   } else {
                     // No exercise IDs - use localStorage only (legacy or block from localStorage)
                     const completedWorkout = {
-                      day,
+                      day: effectiveDay,
                       timestamp: new Date().toISOString(),
                       exercises: loggedExercises.map(ex => ({
                         exerciseName: ex.exerciseName,
@@ -1042,11 +1046,7 @@ const DayView = () => {
                     if (!saved?.exercises?.length) return false;
                     const currentWeekData = block.weeks?.find(w => w.weekNumber === effectiveWeek);
                     if (!currentWeekData) return false;
-                    const daysArray = Array.isArray(currentWeekData.days)
-                      ? currentWeekData.days
-                      : currentWeekData.days && typeof currentWeekData.days === 'object'
-                        ? Object.values(currentWeekData.days).sort((a, b) => (a.dayNumber || 0) - (b.dayNumber || 0))
-                        : [];
+                    const daysArray = getNormalizedDaysArray(currentWeekData.days);
                     const dayData = daysArray.find(d => d.dayNumber === effectiveDay);
                     if (!dayData?.exercises) return false;
                     const exercisesForDay = dayData.exercises.map(normalizeExercise);
@@ -1067,9 +1067,9 @@ const DayView = () => {
                         completed: true
                       }));
                     });
-                    setCompletedExercises((prev) => ({ ...prev, [day]: { ...(prev[day] || {}), ...newCompleted } }));
-                    setWorkoutLog((prev) => ({ ...prev, [day]: { ...(prev[day] || {}), ...newWorkoutLog } }));
-                    setLoggingExercises((prev) => ({ ...prev, [day]: { ...(prev[day] || {}), ...newLogging } }));
+                    setCompletedExercises((prev) => ({ ...prev, [effectiveDay]: { ...(prev[effectiveDay] || {}), ...newCompleted } }));
+                    setWorkoutLog((prev) => ({ ...prev, [effectiveDay]: { ...(prev[effectiveDay] || {}), ...newWorkoutLog } }));
+                    setLoggingExercises((prev) => ({ ...prev, [effectiveDay]: { ...(prev[effectiveDay] || {}), ...newLogging } }));
                     return true;
                   };
                   const applyCompletedFromLogged = () => {
@@ -1086,9 +1086,9 @@ const DayView = () => {
                         completed: true
                       }));
                     });
-                    setCompletedExercises((prev) => ({ ...prev, [day]: { ...(prev[day] || {}), ...newCompleted } }));
-                    setWorkoutLog((prev) => ({ ...prev, [day]: { ...(prev[day] || {}), ...newWorkoutLog } }));
-                    setLoggingExercises((prev) => ({ ...prev, [day]: { ...(prev[day] || {}), ...newLogging } }));
+                    setCompletedExercises((prev) => ({ ...prev, [effectiveDay]: { ...(prev[effectiveDay] || {}), ...newCompleted } }));
+                    setWorkoutLog((prev) => ({ ...prev, [effectiveDay]: { ...(prev[effectiveDay] || {}), ...newWorkoutLog } }));
+                    setLoggingExercises((prev) => ({ ...prev, [effectiveDay]: { ...(prev[effectiveDay] || {}), ...newLogging } }));
                   };
                   if (allExercisesHaveIds) {
                     try {

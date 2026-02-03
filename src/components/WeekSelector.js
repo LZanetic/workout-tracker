@@ -3,6 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import { ChevronLeft, Calendar, CheckCircle } from 'lucide-react';
 import { getTrainingBlock } from '../utils/workoutStorage';
 import { getBlock, getBlockProgress } from '../services/api';
+import { getNormalizedDaysArray } from '../utils/blockProgression';
 
 const WeekSelector = () => {
   const { blockId } = useParams();
@@ -76,14 +77,7 @@ const WeekSelector = () => {
     );
   }
 
-  // Normalize week.days to array (API returns array, localStorage may use object keyed by day number)
-  const getDaysArray = (week) => {
-    if (Array.isArray(week.days)) return week.days;
-    if (week.days && typeof week.days === 'object' && !Array.isArray(week.days)) {
-      return Object.values(week.days).sort((a, b) => (a.dayNumber || 0) - (b.dayNumber || 0));
-    }
-    return [];
-  };
+  const getDaysArray = (week) => getNormalizedDaysArray(week?.days) || [];
 
   // Completed count per week (from API progress)
   const getCompletedCountForWeek = (weekNumber) =>

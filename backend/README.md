@@ -1,6 +1,6 @@
 # Workout Tracker Backend
 
-Spring Boot REST API for the workout tracker: training blocks, workout logging, and exercise deletion. The frontend uses this API when available and falls back to localStorage when it is not.
+Spring Boot REST API for the workout tracker: training blocks, workout logging, and exercise deletion. The frontend uses this API when available (web with `REACT_APP_USE_API=true`) and falls back to local storage when it is not; the Android app uses local storage by default when the API URL is localhost.
 
 ## Prerequisites
 

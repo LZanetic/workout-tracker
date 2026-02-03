@@ -1,3 +1,5 @@
+import { getNormalizedDaysArray } from './blockProgression';
+
 /**
  * Transform frontend block data to backend API format
  */
@@ -97,9 +99,29 @@ export const transformBlockForAPI = (block) => {
   };
 };
 
+/** Round weight to nearest 0.5 kg (e.g. 72.3 → 72.5, 72.7 → 72.5). */
+function roundToNearestHalf(value) {
+  if (value == null || !Number.isFinite(Number(value))) return value;
+  return Math.round(Number(value) * 2) / 2;
+}
+
 /**
- * Build create-block payload from an existing API block, with loads increased by a percentage.
- * @param {Object} apiBlock - Block from getBlock(id) (weeks[].days[] = array, exercises[].prescribedSets[])
+ * Get base load from an exercise (API format has prescribedSets, local has LoadMin/LoadMax).
+ */
+function getExerciseLoads(ex) {
+  if (ex.prescribedSets && ex.prescribedSets.length > 0) {
+    const ps = ex.prescribedSets[0];
+    return { min: ps.targetLoadMin, max: ps.targetLoadMax, sets: ps.targetSets, reps: ps.targetReps, rpe: ps.targetRPE, tempo: ps.tempo };
+  }
+  const sets = ex.Sets ?? 1;
+  const reps = ex.Reps ?? 10;
+  return { min: ex.LoadMin ?? null, max: ex.LoadMax ?? null, sets, reps, rpe: ex.RPE ?? null, tempo: ex.Tempo ? (ex.Tempo === 'Explosive' ? 'EXPLOSIVE' : 'CONTROLLED') : 'CONTROLLED' };
+}
+
+/**
+ * Build create-block payload from an existing block, with loads increased by a percentage.
+ * Handles both API format (weeks[].days[] array, prescribedSets) and local format (week.days object, LoadMin/LoadMax).
+ * @param {Object} apiBlock - Block from getBlock(id)
  * @param {number} loadIncreasePct - e.g. 10 for +10%
  * @returns {Object} Payload for createBlock()
  */
@@ -109,29 +131,38 @@ export const buildCopyBlockPayload = (apiBlock, loadIncreasePct = 0) => {
   const weeks = (apiBlock.weeks || []).map((week, weekIndex) => {
     const weekStart = new Date(startDate);
     weekStart.setDate(weekStart.getDate() + weekIndex * 7);
-    const days = (week.days || []).map((day) => ({
+    const daysNormalized = getNormalizedDaysArray(week.days);
+    const days = daysNormalized.map((day) => ({
       dayNumber: day.dayNumber,
       dayName: day.dayName || `Day ${day.dayNumber}`,
-      restDay: day.restDay ?? false,
-      exercises: (day.exercises || []).map((ex, exIndex) => ({
-        name: ex.name,
-        category: ex.category || 'ACCESSORY',
-        orderInWorkout: ex.orderInWorkout ?? exIndex + 1,
-        prescribedSets: (ex.prescribedSets || []).map((ps, setIndex) => {
-          const min = ps.targetLoadMin != null ? Number(ps.targetLoadMin) * multiplier : null;
-          const max = ps.targetLoadMax != null ? Number(ps.targetLoadMax) * multiplier : null;
-          return {
-            setNumber: ps.setNumber != null ? Number(ps.setNumber) : setIndex + 1,
-            targetSets: ps.targetSets != null ? ps.targetSets : 1,
-            targetReps: ps.targetReps != null ? ps.targetReps : 10,
+      restDay: day.restDay ?? (day.exercises && day.exercises.length === 0),
+      exercises: (day.exercises || []).map((ex, exIndex) => {
+        const base = getExerciseLoads(ex);
+        const name = ex.name || ex.Exercise;
+        const category = ex.category || ex.Category || 'ACCESSORY';
+        const min = base.min != null ? roundToNearestHalf(Number(base.min) * multiplier) : null;
+        const max = base.max != null ? roundToNearestHalf(Number(base.max) * multiplier) : null;
+        const numSets = base.sets != null ? Number(base.sets) : 1;
+        const prescribedSets = [];
+        for (let i = 0; i < numSets; i++) {
+          prescribedSets.push({
+            setNumber: i + 1,
+            targetSets: numSets,
+            targetReps: base.reps != null ? Number(base.reps) : 10,
             targetLoadMin: min,
             targetLoadMax: max,
-            targetRPE: ps.targetRPE ?? null,
-            tempo: ps.tempo || 'CONTROLLED',
-            videoRequired: ps.videoRequired ?? false
-          };
-        })
-      }))
+            targetRPE: base.rpe ?? null,
+            tempo: base.tempo || 'CONTROLLED',
+            videoRequired: false
+          });
+        }
+        return {
+          name,
+          category,
+          orderInWorkout: ex.orderInWorkout ?? exIndex + 1,
+          prescribedSets
+        };
+      })
     }));
     return {
       weekNumber: week.weekNumber,

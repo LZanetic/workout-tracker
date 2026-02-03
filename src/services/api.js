@@ -1,12 +1,228 @@
 import { buildStandaloneBlockFromWorkoutsByDay } from '../utils/apiTransformers';
+import { getNormalizedDaysArray } from '../utils/blockProgression';
+import {
+  getTrainingBlocks,
+  getTrainingBlock,
+  saveTrainingBlock,
+  deleteTrainingBlock,
+  updateTrainingBlock,
+  getWorkoutLogs,
+  setWorkoutLogs,
+  saveWorkoutLog
+} from '../utils/workoutStorage';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8080/api';
+const USE_API_ENV = process.env.REACT_APP_USE_API === 'true';
+// On Capacitor (Android/iOS), don't use API when URL is localhost — device can't reach dev machine, avoid "Failed to fetch" errors
+const isCapacitorNative = typeof window !== 'undefined' && window.Capacitor && ['android', 'ios'].includes(window.Capacitor.getPlatform());
+const isLocalhostApi = !API_URL || /^https?:\/\/localhost(\b|$)/i.test(API_URL) || /^https?:\/\/127\.0\.0\.1(\b|$)/i.test(API_URL);
+const USE_API = USE_API_ENV && (!isCapacitorNative || !isLocalhostApi);
+
+function assignSyntheticExerciseIds(weeks, blockId) {
+  if (!weeks || !Array.isArray(weeks)) return;
+  weeks.forEach((week, weekIdx) => {
+    const days = week.days || [];
+    days.forEach((day, dayIdx) => {
+      const exercises = day.exercises || [];
+      exercises.forEach((ex, exIdx) => {
+        ex.id = blockId * 1000000 + weekIdx * 1000 + dayIdx * 100 + exIdx;
+      });
+    });
+  });
+}
+
+async function createBlockLocal(blockData) {
+  const blocks = getTrainingBlocks();
+  const newId = blocks.length > 0
+    ? Math.max(...blocks.map((b) => Number(b.blockId ?? b.id) || 0)) + 1
+    : 1;
+  const weeks = JSON.parse(JSON.stringify(blockData.weeks || []));
+  assignSyntheticExerciseIds(weeks, newId);
+  const block = {
+    blockId: newId,
+    blockLength: blockData.blockLength,
+    progressionRate: blockData.progressionRate,
+    deloadRate: blockData.deloadRate,
+    createdAt: new Date().toISOString(),
+    weeks
+  };
+  // Do not save here: caller (e.g. BlockSetup) persists so we avoid double-save in local-only mode
+  return { id: newId, ...block };
+}
+
+async function getAllBlocksLocal() {
+  const blocks = getTrainingBlocks();
+  return blocks.map((b) => ({
+    id: b.blockId ?? b.id,
+    blockId: b.blockId ?? b.id,
+    blockLength: b.blockLength,
+    progressionRate: b.progressionRate,
+    deloadRate: b.deloadRate,
+    createdAt: b.createdAt,
+    weeks: b.weeks
+  }));
+}
+
+async function getBlockLocal(blockId) {
+  const block = getTrainingBlock(Number(blockId));
+  if (!block) return null;
+  return { id: block.blockId ?? block.id, ...block };
+}
+
+async function getBlockProgressLocal(blockId) {
+  const logs = getWorkoutLogs();
+  const blockIdNum = Number(blockId);
+  const matching = logs.filter(
+    (log) => Number(log.blockId) === blockIdNum && log.week != null && log.day != null
+  );
+  const byKey = new Map();
+  matching.forEach((log) => {
+    const week = log.week ?? log.weekNumber;
+    const day = log.day ?? log.dayNumber;
+    const key = `${blockIdNum}_${week}_${day}`;
+    if (!byKey.has(key)) byKey.set(key, []);
+    byKey.get(key).push(log);
+  });
+  return Array.from(byKey.entries()).map(([key, logList]) => {
+    const [bid, weekNum, dayNum] = key.split('_').map(Number);
+    const latest = logList.sort((a, b) => new Date(b.timestamp || 0) - new Date(a.timestamp || 0))[0];
+    return {
+      blockId: bid,
+      weekNumber: weekNum,
+      dayNumber: dayNum,
+      completedAt: latest?.timestamp || null,
+      exercises: (latest?.exercises || []).map((ex) => ({
+        exerciseId: null,
+        exerciseName: ex.exerciseName,
+        actualSets: (ex.sets || []).map((s) => ({
+          actualWeight: s.weight,
+          actualReps: s.reps,
+          actualRPE: s.rpe,
+          completed: true
+        }))
+      }))
+    };
+  });
+}
+
+async function deleteBlockLocal(blockId) {
+  const block = getTrainingBlock(Number(blockId));
+  if (!block) throw new Error('Training block not found with id: ' + blockId);
+  deleteTrainingBlock(Number(blockId));
+}
+
+async function logWorkoutLocal(workoutData) {
+  const log = {
+    blockId: workoutData.blockId,
+    week: workoutData.weekNumber,
+    weekNumber: workoutData.weekNumber,
+    day: workoutData.dayNumber,
+    dayNumber: workoutData.dayNumber,
+    timestamp: new Date().toISOString(),
+    exercises: (workoutData.exercises || []).map((ex) => ({
+      exerciseName: ex.exerciseName,
+      sets: (ex.actualSets || []).map((s) => ({
+        weight: s.actualWeight,
+        reps: s.actualReps,
+        rpe: s.actualRPE,
+        completed: true
+      }))
+    }))
+  };
+  saveWorkoutLog(log);
+  return {
+    blockId: log.blockId,
+    weekNumber: log.weekNumber,
+    dayNumber: log.dayNumber,
+    completedAt: log.timestamp,
+    exercises: log.exercises.map((ex) => ({
+      exerciseId: null,
+      exerciseName: ex.exerciseName,
+      actualSets: ex.sets.map((s) => ({
+        actualWeight: s.weight,
+        actualReps: s.reps,
+        actualRPE: s.rpe,
+        completed: true
+      }))
+    }))
+  };
+}
+
+async function getWorkoutLocal(blockId, weekNumber, dayNumber) {
+  const logs = getWorkoutLogs();
+  const matching = logs.filter(
+    (log) =>
+      Number(log.blockId) === Number(blockId) &&
+      (log.week === weekNumber || log.weekNumber === weekNumber) &&
+      (log.day === dayNumber || log.dayNumber === dayNumber)
+  );
+  if (matching.length === 0) return null;
+  // Use latest completion (same as getBlockProgressLocal / History) so block view shows current state
+  const latest = matching.sort((a, b) => new Date(b.timestamp || 0) - new Date(a.timestamp || 0))[0];
+  return {
+    blockId: Number(blockId),
+    weekNumber,
+    dayNumber,
+    completedAt: latest.timestamp,
+    exercises: (latest.exercises || []).map((ex) => ({
+      exerciseId: null,
+      exerciseName: ex.exerciseName,
+      actualSets: (ex.sets || []).map((s) => ({
+        actualWeight: s.weight,
+        actualReps: s.reps,
+        actualRPE: s.rpe,
+        completed: true
+      }))
+    }))
+  };
+}
+
+async function deleteWorkoutLocal(blockId, weekNumber, dayNumber) {
+  const logs = getWorkoutLogs();
+  const filtered = logs.filter(
+    (log) =>
+      !(
+        Number(log.blockId) === Number(blockId) &&
+        (log.week === weekNumber || log.weekNumber === weekNumber) &&
+        (log.day === dayNumber || log.dayNumber === dayNumber)
+      )
+  );
+  setWorkoutLogs(filtered);
+}
+
+function findBlockContainingExerciseId(blocks, exerciseId) {
+  const idNum = Number(exerciseId);
+  for (const block of blocks) {
+    const weeks = block.weeks || [];
+    for (const week of weeks) {
+      const daysArr = getNormalizedDaysArray(week.days);
+      for (const day of daysArr) {
+        const exercises = day.exercises || [];
+        if (exercises.some((ex) => Number(ex.id) === idNum)) return block;
+      }
+    }
+  }
+  return null;
+}
+
+async function deleteExerciseLocal(exerciseId) {
+  const blocks = getTrainingBlocks();
+  const block = findBlockContainingExerciseId(blocks, exerciseId);
+  if (!block) throw new Error('Exercise not found with id: ' + exerciseId);
+  const idNum = Number(exerciseId);
+  const updatedWeeks = (block.weeks || []).map((week) => {
+    const daysArr = getNormalizedDaysArray(week.days);
+    const updatedDays = {};
+    daysArr.forEach(({ dayNumber, exercises }) => {
+      updatedDays[dayNumber] = (exercises || []).filter((ex) => Number(ex.id) !== idNum);
+    });
+    return { ...week, days: updatedDays };
+  });
+  updateTrainingBlock({ ...block, weeks: updatedWeeks });
+}
 
 /**
  * Ensure a standalone block exists for legacy workouts; create from workoutsByDay if needed.
- * @param {Object} workoutsByDay - { dayNumber: [exercises] }
- * @param {number|null} currentStandaloneBlockId - existing id if any
- * @returns {Promise<number|null>} block id to use for legacy, or null if no data
  */
 export const ensureStandaloneBlock = async (workoutsByDay, currentStandaloneBlockId) => {
   const hasDays = workoutsByDay && Object.keys(workoutsByDay).length > 0;
@@ -22,15 +238,15 @@ export const ensureStandaloneBlock = async (workoutsByDay, currentStandaloneBloc
   const payload = buildStandaloneBlockFromWorkoutsByDay(workoutsByDay);
   if (!payload) return null;
   const block = await createBlock(payload);
+  if (block && !USE_API) saveTrainingBlock(block);
   return block?.id ?? null;
 };
 
 /**
  * Create a new training block with all weeks
- * @param {Object} blockData - Block data with weeks structure
- * @returns {Promise<Object>} Created block
  */
 export const createBlock = async (blockData) => {
+  if (!USE_API) return createBlockLocal(blockData);
   try {
     const response = await fetch(`${API_URL}/blocks`, {
       method: 'POST',
@@ -50,9 +266,9 @@ export const createBlock = async (blockData) => {
 
 /**
  * Get all training blocks
- * @returns {Promise<Array>} Array of block data
  */
 export const getAllBlocks = async () => {
+  if (!USE_API) return getAllBlocksLocal();
   try {
     const response = await fetch(`${API_URL}/blocks`);
     if (!response.ok) {
@@ -68,10 +284,9 @@ export const getAllBlocks = async () => {
 
 /**
  * Get a training block by ID
- * @param {number} blockId - Block ID
- * @returns {Promise<Object>} Block data
  */
 export const getBlock = async (blockId) => {
+  if (!USE_API) return getBlockLocal(blockId);
   try {
     const response = await fetch(`${API_URL}/blocks/${blockId}`);
     if (!response.ok) {
@@ -88,10 +303,9 @@ export const getBlock = async (blockId) => {
 
 /**
  * Log a completed workout
- * @param {Object} workoutData - Workout data
- * @returns {Promise<Object>} Saved workout
  */
 export const logWorkout = async (workoutData) => {
+  if (!USE_API) return logWorkoutLocal(workoutData);
   try {
     const response = await fetch(`${API_URL}/workouts`, {
       method: 'POST',
@@ -111,33 +325,29 @@ export const logWorkout = async (workoutData) => {
 
 /**
  * Get a specific logged workout
- * @param {number} blockId - Block ID
- * @param {number} weekNumber - Week number
- * @param {number} dayNumber - Day number
- * @returns {Promise<Object|null>} Workout data or null if not found
  */
 export const getWorkout = async (blockId, weekNumber, dayNumber) => {
+  if (!USE_API) return getWorkoutLocal(blockId, weekNumber, dayNumber);
   try {
     const response = await fetch(
       `${API_URL}/workouts?blockId=${blockId}&weekNumber=${weekNumber}&dayNumber=${dayNumber}`
     );
     if (!response.ok) {
       if (response.status === 404) return null;
-      return null; // No workout logged yet
+      return null;
     }
     return response.json();
   } catch (error) {
     console.error('API Error - getWorkout:', error);
-    return null; // Return null on error (workout may not exist)
+    return null;
   }
 };
 
 /**
  * Get all completed workouts for a block (progress)
- * @param {number} blockId - Block ID
- * @returns {Promise<Array>} Array of workout data
  */
 export const getBlockProgress = async (blockId) => {
+  if (!USE_API) return getBlockProgressLocal(blockId);
   try {
     const response = await fetch(`${API_URL}/blocks/${blockId}/progress`);
     if (!response.ok) {
@@ -299,11 +509,10 @@ export const getExerciseNames = async (query = '') => {
 };
 
 /**
- * Delete an exercise by ID (removes from block/day; prescribed and actual sets are removed)
- * @param {number} exerciseId - Exercise ID to delete
- * @returns {Promise<void>}
+ * Delete an exercise by ID (removes from block/day)
  */
 export const deleteExercise = async (exerciseId) => {
+  if (!USE_API) return deleteExerciseLocal(exerciseId);
   try {
     const response = await fetch(`${API_URL}/exercises/${exerciseId}`, {
       method: 'DELETE'
@@ -320,10 +529,9 @@ export const deleteExercise = async (exerciseId) => {
 
 /**
  * Delete a training block by ID
- * @param {number} blockId - Block ID to delete
- * @returns {Promise<void>}
  */
 export const deleteBlock = async (blockId) => {
+  if (!USE_API) return deleteBlockLocal(blockId);
   try {
     const response = await fetch(`${API_URL}/blocks/${blockId}`, {
       method: 'DELETE'
@@ -340,12 +548,9 @@ export const deleteBlock = async (blockId) => {
 
 /**
  * Delete a specific logged workout
- * @param {number} blockId - Block ID
- * @param {number} weekNumber - Week number
- * @param {number} dayNumber - Day number
- * @returns {Promise<void>}
  */
 export const deleteWorkout = async (blockId, weekNumber, dayNumber) => {
+  if (!USE_API) return deleteWorkoutLocal(blockId, weekNumber, dayNumber);
   try {
     const response = await fetch(
       `${API_URL}/workouts?blockId=${blockId}&weekNumber=${weekNumber}&dayNumber=${dayNumber}`,

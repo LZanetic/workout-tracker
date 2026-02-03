@@ -94,3 +94,25 @@ export const generateBlockWeeks = (week1Data, blockLength, progressionRate = 0.0
   return weeks;
 };
 
+/**
+ * Normalize week.days to array of { dayNumber, exercises }.
+ * generateBlockWeeks produces days as object keyed by day number (e.g. { "1": [exercises], "2": [exercises] }).
+ * API and UI expect array of { dayNumber, exercises }.
+ * @param {Object|Array} days - week.days (object keyed by day number, or array of day objects)
+ * @returns {Array<{ dayNumber: number, exercises: Array }>}
+ */
+export const getNormalizedDaysArray = (days) => {
+  if (!days) return [];
+  if (Array.isArray(days)) return days;
+  if (typeof days === 'object' && days !== null) {
+    return Object.entries(days)
+      .map(([key, val]) => ({
+        dayNumber: Number(key),
+        exercises: Array.isArray(val) ? val : (val?.exercises ?? [])
+      }))
+      .filter((d) => Number.isFinite(d.dayNumber))
+      .sort((a, b) => a.dayNumber - b.dayNumber);
+  }
+  return [];
+};
+

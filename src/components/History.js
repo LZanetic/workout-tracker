@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { History as HistoryIcon, ChevronLeft, Trash2, Dumbbell, Home } from 'lucide-react';
 import { useWorkout } from '../context/WorkoutContext';
-import { getWorkoutLogs, getTrainingBlock, getTrainingBlocks } from '../utils/workoutStorage';
+import { getWorkoutLogs, getTrainingBlock, getTrainingBlocks, setWorkoutLogs } from '../utils/workoutStorage';
 import { getAllBlocks, getBlockProgress, deleteWorkout } from '../services/api';
 
 const History = () => {
@@ -141,17 +141,20 @@ const History = () => {
         }
         // Remove from localStorage so UI stays in sync (for API workouts or legacy)
         const logs = getWorkoutLogs();
-        const workoutWeek = workout.weekNumber || workout.week;
-        const workoutDay = workout.dayNumber || workout.day;
+        const workoutWeek = workout.weekNumber ?? workout.week;
+        const workoutDay = workout.dayNumber ?? workout.day;
         const updatedLogs = logs.filter(log => {
           if (workout.blockId != null && workoutWeek != null && workoutDay != null) {
-            const logWeek = log.week || log.weekNumber;
-            const logDay = log.day || log.dayNumber;
-            return !(log.blockId === workout.blockId && logWeek === workoutWeek && logDay === workoutDay);
+            const logWeek = log.week ?? log.weekNumber;
+            const logDay = log.day ?? log.dayNumber;
+            const sameBlockWeekDay = Number(log.blockId) === Number(workout.blockId) &&
+              Number(logWeek) === Number(workoutWeek) &&
+              Number(logDay) === Number(workoutDay);
+            return !sameBlockWeekDay;
           }
-          return !(log.timestamp === workout.timestamp && (log.day || log.dayNumber) === (workout.day || workout.dayNumber));
+          return !(log.timestamp === workout.timestamp && (log.day ?? log.dayNumber) === (workout.day ?? workout.dayNumber));
         });
-        localStorage.setItem('workout_logs', JSON.stringify(updatedLogs));
+        setWorkoutLogs(updatedLogs);
         // Refresh list from backend (so History reflects DB)
         await loadWorkouts();
         if (selectedWorkout && workouts.indexOf(selectedWorkout) === index) {

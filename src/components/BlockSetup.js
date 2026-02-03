@@ -1,10 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { Upload, PenLine, Copy, ChevronLeft, Dumbbell, CheckCircle } from 'lucide-react';
-import FileUpload from './FileUpload';
-import { parseBlockCSV } from '../utils/blockCsvParser';
+import { PenLine, Copy, ChevronLeft, Dumbbell } from 'lucide-react';
 import { generateBlockWeeks } from '../utils/blockProgression';
-import { saveTrainingBlock } from '../utils/workoutStorage';
+import { saveTrainingBlock, getTrainingBlocks } from '../utils/workoutStorage';
 import { createBlock, getBlock, getAllBlocks } from '../services/api';
 import { transformBlockForAPI, buildCopyBlockPayload } from '../utils/apiTransformers';
 import ExerciseForm from './ExerciseForm';
@@ -12,9 +10,7 @@ import DayBuilder from './DayBuilder';
 
 const BlockSetup = () => {
   const navigate = useNavigate();
-  const [inputMethod, setInputMethod] = useState('csv'); // 'csv' | 'manual' | 'copy'
-  const [week1Data, setWeek1Data] = useState(null);
-  const [blockLength, setBlockLength] = useState(5);
+  const [inputMethod, setInputMethod] = useState('manual'); // 'manual' | 'copy'
   const [progressionRate, setProgressionRate] = useState(0.075);
   const [deloadRate, setDeloadRate] = useState(0.85);
   const [error, setError] = useState('');
@@ -36,19 +32,6 @@ const BlockSetup = () => {
   const [editingExercise, setEditingExercise] = useState(null);
   const [showExerciseForm, setShowExerciseForm] = useState(false);
   const [currentDayForForm, setCurrentDayForForm] = useState(1);
-
-  const handleFileUpload = (csvText) => {
-    // Clear error before attempting to parse
-    setError('');
-    try {
-      const parsed = parseBlockCSV(csvText);
-      setWeek1Data(parsed);
-      setError('');
-    } catch (err) {
-      setError(err.message);
-      setWeek1Data(null);
-    }
-  };
 
   const handleAddExercise = (dayNumber) => {
     setCurrentDayForForm(dayNumber);
@@ -183,7 +166,7 @@ const BlockSetup = () => {
           progressionRate: sourceBlock.progressionRate,
           deloadRate: sourceBlock.deloadRate,
           createdAt: new Date().toISOString(),
-          weeks: sourceBlock.weeks
+          weeks: createdBlock.weeks ?? apiBlockData.weeks
         };
         saveTrainingBlock(blockForStorage);
         navigate(`/block/${createdBlock.id}`);
@@ -195,33 +178,19 @@ const BlockSetup = () => {
       return;
     }
 
-    const dataToUse = inputMethod === 'csv' ? week1Data : manualWeekData;
-    
-    if (!dataToUse) {
-      setError(inputMethod === 'csv' 
-        ? 'Please upload Week 1 CSV file first'
-        : 'Please add at least one exercise to generate a block');
+    const hasExercises = Object.values(manualWeekData).some(day => day.length > 0);
+    if (!hasExercises) {
+      setError('Please add at least one exercise to generate a block');
       return;
     }
-
-    if (inputMethod === 'manual') {
-      const hasExercises = Object.values(manualWeekData).some(day => day.length > 0);
-      if (!hasExercises) {
-        setError('Please add at least one exercise to generate a block');
-        return;
-      }
-      setBlockLength(numWeeks);
-    }
-
     setIsGenerating(true);
     setError('');
 
     try {
-      const weeksToGenerate = inputMethod === 'manual' ? numWeeks : blockLength;
-      const weeks = generateBlockWeeks(dataToUse, weeksToGenerate, progressionRate, deloadRate);
+      const weeks = generateBlockWeeks(manualWeekData, numWeeks, progressionRate, deloadRate);
 
       const blockForAPI = {
-        blockLength: weeksToGenerate,
+        blockLength: numWeeks,
         progressionRate,
         deloadRate,
         weeks: weeks.map(week => ({
@@ -236,11 +205,11 @@ const BlockSetup = () => {
         
         const blockForStorage = {
           blockId: createdBlock.id,
-          blockLength: weeksToGenerate,
+          blockLength: numWeeks,
           progressionRate,
           deloadRate,
           createdAt: new Date().toISOString(),
-          weeks: blockForAPI.weeks
+          weeks: createdBlock.weeks ?? blockForAPI.weeks
         };
         saveTrainingBlock(blockForStorage);
 
@@ -248,14 +217,14 @@ const BlockSetup = () => {
       } catch (apiError) {
         console.warn('API call failed, using localStorage fallback:', apiError);
         
-        const existingBlocks = JSON.parse(localStorage.getItem('training_blocks') || '[]');
-        const nextBlockId = existingBlocks.length > 0 
-          ? Math.max(...existingBlocks.map(b => b.blockId)) + 1 
+        const existingBlocks = getTrainingBlocks();
+        const nextBlockId = existingBlocks.length > 0
+          ? Math.max(...existingBlocks.map(b => b.blockId ?? b.id)) + 1
           : 1;
 
         const blockForStorage = {
           blockId: nextBlockId,
-          blockLength: weeksToGenerate,
+          blockLength: numWeeks,
           progressionRate,
           deloadRate,
           createdAt: new Date().toISOString(),
@@ -285,7 +254,7 @@ const BlockSetup = () => {
 
   const getCurrentData = () => {
     if (inputMethod === 'copy') return copySourceBlockId ? { copy: true } : null;
-    return inputMethod === 'csv' ? week1Data : manualWeekData;
+    return manualWeekData;
   };
 
   const currentData = getCurrentData();
@@ -310,21 +279,7 @@ const BlockSetup = () => {
           {/* Method Selection */}
           <div>
             <h2 className="text-2xl font-bold text-gray-200 mb-4">Input Method</h2>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <button
-                onClick={() => {
-                  setInputMethod('csv');
-                  setError('');
-                }}
-                className={`px-4 py-4 rounded-xl font-bold text-lg transition-all min-h-[56px] flex items-center justify-center gap-2 ${
-                  inputMethod === 'csv'
-                    ? 'bg-amber-500 text-gray-900 shadow-lg'
-                    : 'bg-gray-700 text-gray-300 hover:bg-gray-600 border border-gray-600'
-                }`}
-              >
-                <Upload className="w-6 h-6" />
-                CSV Upload
-              </button>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <button
                 onClick={() => {
                   setInputMethod('manual');
@@ -356,33 +311,6 @@ const BlockSetup = () => {
             </div>
           </div>
 
-          {/* CSV Upload Method */}
-          {inputMethod === 'csv' && (
-            <div>
-              <h2 className="text-2xl font-bold text-gray-200 mb-4">Step 1: Upload Week 1 Base Program</h2>
-              <p className="text-gray-400 mb-4 text-sm">
-                Upload your Week 1 CSV file with format: Day,Exercise,Sets,Reps,BaseLoadMin,BaseLoadMax,RPE
-              </p>
-              <FileUpload 
-                onFileUpload={handleFileUpload}
-                onFileSelect={() => setError('')}
-              />
-              {week1Data && (
-                <div className="mt-4 p-4 bg-emerald-900/30 border border-emerald-700/50 rounded-xl flex items-center gap-3">
-                  <CheckCircle className="w-6 h-6 text-emerald-400 shrink-0" />
-                  <div>
-                    <p className="text-emerald-300 font-semibold">
-                      Week 1 program loaded successfully
-                    </p>
-                    <p className="text-emerald-400/80 text-sm mt-1">
-                      {Object.keys(week1Data).length} days found
-                    </p>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
           {/* Copy from Block Method */}
           {inputMethod === 'copy' && (
             <div className="space-y-6">
@@ -405,8 +333,8 @@ const BlockSetup = () => {
                       </option>
                     ))}
                   </select>
-                  {blocksList.length === 0 && (
-                    <p className="mt-1 text-sm text-gray-500">No blocks found. Create one with CSV or Manual first.</p>
+                    {blocksList.length === 0 && (
+                    <p className="mt-1 text-sm text-gray-500">No blocks found. Create one first.</p>
                   )}
                 </div>
                 <div>
@@ -527,36 +455,6 @@ const BlockSetup = () => {
           {inputMethod !== 'copy' && (
           <div>
             <h2 className="text-2xl font-bold text-gray-200 mb-4">Block Configuration</h2>
-            
-            {/* Block Length - Only show for CSV mode */}
-            {inputMethod === 'csv' && (
-              <div className="mb-6">
-                <div className="bg-gray-700/50 rounded-xl p-4 border border-gray-600">
-                  <div className="flex items-center justify-between mb-2">
-                    <label className="text-sm font-semibold text-gray-300">
-                      Block Length (weeks)
-                    </label>
-                    <span className="text-lg font-bold text-gray-100">{blockLength}</span>
-                  </div>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => setBlockLength(Math.max(1, blockLength - 1))}
-                      disabled={blockLength <= 1}
-                      className="flex-1 px-3 py-2 bg-gray-600 text-gray-200 rounded-lg font-bold hover:bg-gray-500 disabled:opacity-50 disabled:cursor-not-allowed min-h-[44px] transition-colors"
-                    >
-                      −
-                    </button>
-                    <button
-                      onClick={() => setBlockLength(Math.min(12, blockLength + 1))}
-                      disabled={blockLength >= 12}
-                      className="flex-1 px-3 py-2 bg-gray-600 text-gray-200 rounded-lg font-bold hover:bg-gray-500 disabled:opacity-50 disabled:cursor-not-allowed min-h-[44px] transition-colors"
-                    >
-                      +
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
 
             {/* Progression Rate */}
             <div className="mb-6">
@@ -622,7 +520,6 @@ const BlockSetup = () => {
               disabled={
                 isGenerating ||
                 (inputMethod === 'copy' && !copySourceBlockId) ||
-                (inputMethod === 'csv' && !week1Data) ||
                 (inputMethod === 'manual' && !Object.values(manualWeekData).some(day => day.length > 0))
               }
               className="flex-1 px-6 py-5 bg-emerald-600 text-white rounded-xl font-bold text-lg hover:bg-emerald-500 active:bg-emerald-700 transition-colors shadow-lg min-h-[56px] disabled:bg-gray-600 disabled:cursor-not-allowed"
@@ -645,9 +542,9 @@ const BlockSetup = () => {
             <div className="p-4 bg-amber-500/10 border border-amber-500/30 rounded-xl">
               <p className="text-amber-400 font-semibold mb-2">Block Preview:</p>
               <ul className="text-gray-300 text-sm space-y-1">
-                <li>� Week 1: Base weights {inputMethod === 'csv' ? '(from CSV)' : '(from manual builder)'}</li>
-                <li>� Weeks 2-{blockLength - 1}: +{(progressionRate * 100).toFixed(1)}% per week</li>
-                <li>� Week {inputMethod === 'manual' ? numWeeks : blockLength}: Deload at {(deloadRate * 100).toFixed(0)}% of Week 1</li>
+                <li>� Week 1: Base weights (from manual builder)</li>
+                <li>� Weeks 2-{numWeeks - 1}: +{(progressionRate * 100).toFixed(1)}% per week</li>
+                <li>� Week {numWeeks}: Deload at {(deloadRate * 100).toFixed(0)}% of Week 1</li>
                 <li>� Weights rounded to nearest 2.5kg</li>
               </ul>
             </div>
