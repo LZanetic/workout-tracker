@@ -33,18 +33,6 @@ public class TrainingBlockController {
         return ResponseEntity.ok(trainingBlockService.getTrainingBlockById(id));
     }
     
-    @GetMapping("/assigned-to/{userId}")
-    @Operation(summary = "Get training blocks assigned to a user")
-    public ResponseEntity<List<TrainingBlockDto>> getTrainingBlocksByAssignedUser(@PathVariable Long userId) {
-        return ResponseEntity.ok(trainingBlockService.getTrainingBlocksByAssignedUser(userId));
-    }
-    
-    @GetMapping("/created-by/{userId}")
-    @Operation(summary = "Get training blocks created by a user")
-    public ResponseEntity<List<TrainingBlockDto>> getTrainingBlocksByCreatedUser(@PathVariable Long userId) {
-        return ResponseEntity.ok(trainingBlockService.getTrainingBlocksByCreatedUser(userId));
-    }
-    
     @PostMapping
     @Operation(summary = "Create a new training block")
     public ResponseEntity<TrainingBlockDto> createTrainingBlock(@Valid @RequestBody CreateTrainingBlockRequest request) {

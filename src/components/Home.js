@@ -1,14 +1,16 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
+import { Dumbbell, LayoutList, History, Upload, PenLine, Calendar } from 'lucide-react';
 import FileUpload from './FileUpload';
 import { parseCSV } from '../utils/csvParser';
 import { useWorkout } from '../context/WorkoutContext';
 import { getWorkoutLogs, getTrainingBlock, saveWorkoutsByDay, clearWorkoutsByDay } from '../utils/workoutStorage';
+import { ensureStandaloneBlock, deleteBlock } from '../services/api';
 import ExerciseForm from './ExerciseForm';
 import DayBuilder from './DayBuilder';
 
 const Home = () => {
-  const { workoutsByDay, setWorkoutsByDay } = useWorkout();
+  const { workoutsByDay, setWorkoutsByDay, standaloneBlockId, setStandaloneBlockId } = useWorkout();
   const [error, setError] = useState('');
   const [currentWeek, setCurrentWeek] = useState(null);
   const [inputMethod, setInputMethod] = useState('csv'); // 'csv' or 'manual'
@@ -49,20 +51,24 @@ const Home = () => {
     }
   }, []);
 
-  const handleFileUpload = (csvText) => {
-    // Clear error before attempting to parse
+  const handleFileUpload = async (csvText) => {
     setError('');
     try {
       const parsed = parseCSV(csvText);
+      // Override existing standalone: delete old block if any, then create new one
+      if (standaloneBlockId != null) {
+        try {
+          await deleteBlock(standaloneBlockId);
+        } catch (_) { /* block may already be gone */ }
+        setStandaloneBlockId(null);
+      }
+      const newId = await ensureStandaloneBlock(parsed, null);
+      if (newId != null) setStandaloneBlockId(newId);
       setWorkoutsByDay(parsed);
       saveWorkoutsByDay(parsed);
       setError('');
-      
-      // Navigate to first day if available
       const days = Object.keys(parsed).map(d => parseInt(d, 10)).sort((a, b) => a - b);
-      if (days.length > 0) {
-        navigate(`/day/${days[0]}`);
-      }
+      if (days.length > 0) navigate(`/day/${days[0]}`);
     } catch (err) {
       setError(err.message);
       setWorkoutsByDay(null);
@@ -93,6 +99,7 @@ const Home = () => {
       LoadMax: exerciseData.loadMax,
       RPE: exerciseData.rpe,
       Category: exerciseData.category,
+      Equipment: exerciseData.equipment || '',
       Tempo: exerciseData.tempo
     };
 
@@ -166,15 +173,13 @@ const Home = () => {
     }
   };
 
-  const handleSaveManualWorkout = () => {
-    // Convert manual builder data to workoutsByDay format
+  const handleSaveManualWorkout = async () => {
     const hasExercises = Object.values(manualWeekData).some(day => day.length > 0);
     if (!hasExercises) {
       setError('Please add at least one exercise to save');
       return;
     }
 
-    // Convert to workoutsByDay format (using LoadMin/LoadMax for legacy system)
     const workoutsByDayData = {};
     Object.keys(manualWeekData).forEach(dayNum => {
       const dayExercises = manualWeekData[dayNum];
@@ -188,20 +193,27 @@ const Home = () => {
           LoadMax: ex.LoadMax,
           RPE: ex.RPE,
           Category: ex.Category,
+          Equipment: ex.Equipment || '',
           Tempo: ex.Tempo
         }));
       }
     });
 
+    // Override existing standalone: delete old block if any, then create new one
+    if (standaloneBlockId != null) {
+      try {
+        await deleteBlock(standaloneBlockId);
+      } catch (_) { /* block may already be gone */ }
+      setStandaloneBlockId(null);
+    }
+    const newId = await ensureStandaloneBlock(workoutsByDayData, null);
+    if (newId != null) setStandaloneBlockId(newId);
+
     setWorkoutsByDay(workoutsByDayData);
     saveWorkoutsByDay(workoutsByDayData);
     setError('');
-
-    // Navigate to first day if available
     const days = Object.keys(workoutsByDayData).map(d => parseInt(d, 10)).sort((a, b) => a - b);
-    if (days.length > 0) {
-      navigate(`/day/${days[0]}`);
-    }
+    if (days.length > 0) navigate(`/day/${days[0]}`);
   };
 
   const allDays = workoutsByDay
@@ -211,47 +223,51 @@ const Home = () => {
     : [];
 
   return (
-    <div className="min-h-screen bg-gray-50 p-4">
+    <div className="min-h-screen bg-gray-900 p-4">
       <div className="max-w-4xl mx-auto space-y-6">
-        <div className="bg-white rounded-lg shadow-lg p-6 md:p-8">
+        <div className="bg-gray-800 rounded-2xl shadow-xl border border-gray-700 p-6 md:p-8">
           <div className="flex justify-between items-center mb-4">
-            <h1 className="text-3xl font-bold text-gray-800">
+            <h1 className="text-3xl font-bold text-gray-100 flex items-center gap-3">
+              <Dumbbell className="w-9 h-9 text-amber-500" />
               Workout Tracker
             </h1>
             <div className="flex gap-2">
               <Link
                 to="/blocks"
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium transition-colors"
+                className="px-4 py-2 bg-amber-500 text-gray-900 rounded-xl hover:bg-amber-400 font-semibold transition-colors flex items-center gap-2"
               >
+                <LayoutList className="w-5 h-5" />
                 Blocks
               </Link>
               <Link
                 to="/history"
-                className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 font-medium transition-colors"
+                className="px-4 py-2 bg-gray-700 text-gray-200 rounded-xl hover:bg-gray-600 font-medium transition-colors flex items-center gap-2 border border-gray-600"
               >
+                <History className="w-5 h-5" />
                 History
               </Link>
             </div>
           </div>
-          <p className="text-gray-600 text-center mb-8">
+          <p className="text-gray-400 text-center mb-8">
             Upload your workout CSV file or build manually to get started
           </p>
 
           {/* Method Selection */}
           <div className="mb-6">
-            <h2 className="text-xl font-semibold text-gray-800 mb-4">Input Method</h2>
+            <h2 className="text-xl font-semibold text-gray-200 mb-4">Input Method</h2>
             <div className="grid grid-cols-2 gap-3">
               <button
                 onClick={() => {
                   setInputMethod('csv');
                   setError('');
                 }}
-                className={`px-4 py-4 rounded-xl font-bold text-lg transition-all min-h-[56px] ${
+                className={`px-4 py-4 rounded-xl font-bold text-lg transition-all min-h-[56px] flex items-center justify-center gap-2 ${
                   inputMethod === 'csv'
-                    ? 'bg-blue-600 text-white shadow-lg'
-                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                    ? 'bg-amber-500 text-gray-900 shadow-lg'
+                    : 'bg-gray-700 text-gray-300 hover:bg-gray-600 border border-gray-600'
                 }`}
               >
+                <Upload className="w-6 h-6" />
                 CSV Upload
               </button>
               <button
@@ -259,12 +275,13 @@ const Home = () => {
                   setInputMethod('manual');
                   setError('');
                 }}
-                className={`px-4 py-4 rounded-xl font-bold text-lg transition-all min-h-[56px] ${
+                className={`px-4 py-4 rounded-xl font-bold text-lg transition-all min-h-[56px] flex items-center justify-center gap-2 ${
                   inputMethod === 'manual'
-                    ? 'bg-blue-600 text-white shadow-lg'
-                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                    ? 'bg-amber-500 text-gray-900 shadow-lg'
+                    : 'bg-gray-700 text-gray-300 hover:bg-gray-600 border border-gray-600'
                 }`}
               >
+                <PenLine className="w-6 h-6" />
                 Manual Builder
               </button>
             </div>
@@ -283,28 +300,28 @@ const Home = () => {
           {/* Manual Builder Method */}
           {inputMethod === 'manual' && (
             <div className="space-y-6">
-              <h2 className="text-xl font-semibold text-gray-800 mb-4">Build Your Workout Program</h2>
+              <h2 className="text-xl font-semibold text-gray-200 mb-4">Build Your Workout Program</h2>
               
               {/* Days Control */}
-              <div className="bg-gray-50 rounded-xl p-4 mb-6">
+              <div className="bg-gray-700/50 rounded-xl p-4 mb-6 border border-gray-600">
                 <div className="flex items-center justify-between mb-2">
-                  <label className="text-sm font-semibold text-gray-700">
+                  <label className="text-sm font-semibold text-gray-300">
                     Number of Days
                   </label>
-                  <span className="text-lg font-bold text-gray-900">{numDays}</span>
+                  <span className="text-lg font-bold text-gray-100">{numDays}</span>
                 </div>
                 <div className="flex gap-2">
                   <button
                     onClick={handleRemoveDay}
                     disabled={numDays <= 1}
-                    className="flex-1 px-3 py-2 bg-gray-200 text-gray-700 rounded-lg font-bold hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed min-h-[44px]"
+                    className="flex-1 px-3 py-2 bg-gray-600 text-gray-200 rounded-lg font-bold hover:bg-gray-500 disabled:opacity-50 disabled:cursor-not-allowed min-h-[44px] transition-colors"
                   >
                     −
                   </button>
                   <button
                     onClick={handleAddDay}
                     disabled={numDays >= 7}
-                    className="flex-1 px-3 py-2 bg-gray-200 text-gray-700 rounded-lg font-bold hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed min-h-[44px]"
+                    className="flex-1 px-3 py-2 bg-gray-600 text-gray-200 rounded-lg font-bold hover:bg-gray-500 disabled:opacity-50 disabled:cursor-not-allowed min-h-[44px] transition-colors"
                   >
                     +
                   </button>
@@ -326,9 +343,9 @@ const Home = () => {
 
               {/* Workout Preview */}
               {Object.values(manualWeekData).some(day => day.length > 0) && (
-                <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
-                  <p className="text-blue-800 font-semibold mb-2">Workout Preview:</p>
-                  <div className="space-y-2 text-sm text-blue-700">
+                <div className="p-4 bg-amber-500/10 border border-amber-500/30 rounded-xl">
+                  <p className="text-amber-400 font-semibold mb-2">Workout Preview:</p>
+                  <div className="space-y-2 text-sm text-gray-300">
                     {Array.from({ length: numDays }, (_, i) => i + 1).map(dayNum => {
                       const dayExercises = manualWeekData[dayNum] || [];
                       if (dayExercises.length === 0) return null;
@@ -347,7 +364,7 @@ const Home = () => {
               <button
                 onClick={handleSaveManualWorkout}
                 disabled={!Object.values(manualWeekData).some(day => day.length > 0)}
-                className="w-full px-6 py-5 bg-green-600 text-white rounded-xl font-bold text-lg hover:bg-green-700 active:bg-green-800 transition-colors shadow-lg min-h-[56px] disabled:bg-gray-400 disabled:cursor-not-allowed"
+                className="w-full px-6 py-5 bg-emerald-600 text-white rounded-xl font-bold text-lg hover:bg-emerald-500 active:bg-emerald-700 transition-colors shadow-lg min-h-[56px] disabled:bg-gray-600 disabled:cursor-not-allowed"
               >
                 Save Workout Program
               </button>
@@ -355,14 +372,15 @@ const Home = () => {
           )}
 
           {error && (
-            <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700">
+            <div className="mt-4 p-4 bg-red-900/30 border border-red-700 rounded-xl text-red-300">
               {error}
             </div>
           )}
 
           {workoutsByDay && allDays.length > 0 && (
             <div className="mt-8">
-              <h2 className="text-xl font-semibold text-gray-800 mb-4">
+              <h2 className="text-xl font-semibold text-gray-200 mb-4 flex items-center gap-2">
+                <Calendar className="w-5 h-5 text-amber-500" />
                 Available Days
               </h2>
               <div className="flex flex-wrap gap-2">
@@ -370,7 +388,7 @@ const Home = () => {
                   <Link
                     key={day}
                     to={`/day/${day}`}
-                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium transition-colors"
+                    className="px-4 py-2 bg-amber-500 text-gray-900 rounded-xl hover:bg-amber-400 font-semibold transition-colors"
                   >
                     Day {day}
                   </Link>
@@ -382,24 +400,25 @@ const Home = () => {
 
         {/* Current Week Display - Separate card */}
         {currentWeek && (
-          <div className="bg-white rounded-lg shadow-md border border-gray-200 p-6">
-            <h2 className="text-xl font-semibold text-gray-800 mb-4">
+          <div className="bg-gray-800 rounded-2xl shadow-xl border border-gray-700 p-6">
+            <h2 className="text-xl font-semibold text-gray-200 mb-4 flex items-center gap-2">
+              <Calendar className="w-5 h-5 text-amber-500" />
               Current Week
             </h2>
             <div className="flex items-center gap-3 flex-wrap">
               <Link
                 to={`/block/${currentWeek.blockId}/week/${currentWeek.week}/day/1`}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg text-base font-semibold hover:bg-blue-700 transition-colors"
+                className="px-4 py-2 bg-amber-500 text-gray-900 rounded-xl text-base font-semibold hover:bg-amber-400 transition-colors"
               >
                 Block {currentWeek.blockId} - Week {currentWeek.week}
               </Link>
               {currentWeek.isDeload && (
-                <span className="px-3 py-1 bg-yellow-100 text-yellow-800 rounded-lg text-sm font-semibold border-2 border-yellow-300">
+                <span className="px-3 py-1 bg-amber-500/20 text-amber-400 rounded-lg text-sm font-semibold border border-amber-500/50">
                   Deload Week
                 </span>
               )}
               {currentWeek.week < currentWeek.blockLength && (
-                <span className="text-sm text-gray-600">
+                <span className="text-sm text-gray-400">
                   {currentWeek.blockLength - currentWeek.week} week{currentWeek.blockLength - currentWeek.week !== 1 ? 's' : ''} remaining
                 </span>
               )}

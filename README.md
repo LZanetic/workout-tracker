@@ -1,164 +1,142 @@
 # Workout Tracker
 
-A mobile-first workout tracking application built with React. Track your training blocks, log workouts, and monitor progress with automatic progressive overload calculations.
+A mobile-first workout tracking app built with React. Create training blocks, log workouts with sets/reps/weight/RPE, and view history. Supports both block-based programs and standalone day-based plans.
 
 ## Features
 
-### Training Block System
-- **Progressive Overload Blocks**: Create multi-week training blocks with automatic weight progression
-- **Flexible Configuration**: Set block length (1-12 weeks), progression rate (5-15% per week), and deload percentage (70-90%)
-- **Two Input Methods**:
-  - **CSV Upload**: Upload Week 1 base program as CSV
-  - **Manual Builder**: Build workouts day-by-day with a mobile-friendly interface
-- **Dynamic Day/Week Management**: Add or remove days (1-7) and weeks (1-12) in the manual builder
+### Training blocks
+- **Progressive overload**: Multi-week blocks with configurable weekly progression (5–15%) and deload week (70–90% of week 1).
+- **Three ways to create a block**:
+  - **CSV upload**: Upload a Week 1 base program (Day, Exercise, Sets, Reps, BaseLoadMin, BaseLoadMax, RPE).
+  - **Manual builder**: Build Week 1 day-by-day with exercise search (database or free text) and set/reps/load/RPE/tempo.
+  - **Copy from block**: Duplicate an existing block and optionally increase all loads by a percentage.
+- **Block configuration**: Block length (1–12 weeks), progression rate, deload rate. Days per week (1–7) in manual builder.
 
-### Workout Logging
-- **Detailed Set Tracking**: Log weight, reps, and RPE for each set
-- **Exercise Management**: Add, edit, delete, and reorder exercises
-- **Completion Tracking**: Mark sets and exercises as complete
-- **Workout History**: View all completed workouts with detailed set-by-set data
+### Standalone workouts (no block)
+- **Home**: Upload a CSV or build a week manually (day-based plan). Stored as a single “standalone” block so you can log and track it.
+- **Available days**: Quick links to Day 1, 2, … for your current plan.
 
-### Legacy Workout System
-- **Day-Based Workouts**: Support for traditional day-based workout plans
-- **CSV Upload**: Upload workout plans with standard format
-- **Manual Builder**: Create workouts without CSV files
+### Workout logging
+- **Day view**: Per-exercise cards with prescribed sets; log weight, reps, and RPE per set.
+- **Completion**: Mark sets complete, complete exercise, then complete workout. Workouts are saved to the backend (or localStorage if the API is unavailable).
+- **Exercise actions**: Delete an exercise from a day (block mode removes it from all weeks).
 
-### User Experience
-- **Mobile-Optimized**: Large touch targets, numeric keypads, and responsive design
-- **Current Week Display**: See your active training block and week on the home page
-- **Deload Week Indicators**: Visual badges for deload weeks
-- **Persistent Storage**: All data saved to localStorage
-- **Error Handling**: User-friendly error messages with auto-dismiss
+### History
+- **List**: All completed workouts (from API and localStorage), most recent first.
+- **Detail**: View any workout with set-by-set results.
+- **Delete**: Remove a logged workout (API and local).
 
-## Tech Stack
+### Exercise form
+- **Search from database**: Choose body part (or “Search by name”), equipment, then exercise; or type a name for suggestions (external ExerciseDB API).
+- **Free input**: Enter any exercise name without search.
 
-- **React 19** - UI framework
-- **React Router** - Client-side routing
-- **Tailwind CSS** - Styling
-- **LocalStorage** - Data persistence
+### UX and design
+- **Dark theme**: Dark backgrounds (gray-900/800), amber accents, emerald for success.
+- **Icons**: Lucide React icons (dumbbell, calendar, history, etc.) across the app.
+- **Mobile-first**: Large touch targets, numeric/decimal inputs, responsive layout.
+- **Persistence**: Backend API (blocks + workouts) with localStorage fallback when the API is unavailable.
 
-## Getting Started
+## Tech stack
+
+- **React 19** – UI
+- **React Router 7** – Routing
+- **Tailwind CSS** – Styling
+- **Lucide React** – Icons
+- **Backend API** – Blocks and workout logging (optional; app works with localStorage only if backend is down)
+
+## Getting started
 
 ### Prerequisites
-- Node.js (v14 or higher)
+
+- Node.js 14+
 - npm or yarn
 
-### Installation
+### Install and run
 
-1. Clone the repository
-```bash
-git clone <repository-url>
-cd workout-tracker
-```
+1. Clone and install:
+   ```bash
+   git clone <repository-url>
+   cd workout-tracker
+   npm install
+   ```
 
-2. Install dependencies
-```bash
-npm install
-```
+2. Start the dev server:
+   ```bash
+   npm start
+   ```
+   Open [http://localhost:3000](http://localhost:3000).
 
-3. Start the development server
-```bash
-npm start
-```
+3. **(Optional)** Run the backend so blocks and workouts are stored in PostgreSQL (see [backend/README.md](backend/README.md)). If the backend is not running, the app uses localStorage only.
 
-4. Open [http://localhost:3000](http://localhost:3000) in your browser
-
-### Building for Production
+### Build for production
 
 ```bash
 npm run build
 ```
 
+Configure the API base URL with `REACT_APP_API_URL` (default: `http://localhost:8080/api`).
+
 ## Usage
 
-### Creating a Training Block
+### Creating a training block
 
-1. Navigate to **Blocks** → **+ New Block**
-2. Choose input method:
-   - **CSV Upload**: Upload a CSV file with format: `Day,Exercise,Sets,Reps,BaseLoadMin,BaseLoadMax,RPE`
-   - **Manual Builder**: Build your Week 1 program day-by-day
-3. Configure block settings:
-   - Block length (weeks)
-   - Weekly progression rate (%)
-   - Deload week percentage (%)
-4. Click **Generate Training Block**
+1. Go to **Blocks** → **New Block** (or **Create Training Block** if the list is empty).
+2. Choose **CSV Upload**, **Manual Builder**, or **Copy from Block**.
+3. For CSV: upload a Week 1 CSV. For manual: set days per week, add exercises per day (add exercise → search or free input, set sets/reps/load/RPE/tempo). For copy: select a block and optional load increase %.
+4. Set **Block configuration** (block length, progression %, deload %) if not using copy.
+5. Click **Generate Training Block** (or **Copy & Create Block**).
 
-### Logging a Workout
+### Logging a workout
 
-1. Navigate to your training block or day
-2. Click **Start Exercise** on any exercise
-3. Enter weight, reps, and RPE for each set
-4. Mark sets as complete
-5. Click **Complete Exercise** when finished
-6. Click **Complete Workout** to save
+1. Open a block → choose week → choose day (or from Home, open a **Day** for standalone).
+2. For each exercise, click **Start Exercise**, enter weight/reps/RPE per set, mark sets complete, then **Complete Exercise**.
+3. Click **Complete Workout** to save.
 
-### Viewing History
+### Viewing history
 
-- Navigate to **History** to see all completed workouts
-- Click on any workout to view detailed set-by-set data
-- Filter by block, week, or date
+- Go to **History**. Click a workout to see set-by-set details. Use **Delete** to remove a workout.
 
-## CSV Format
+## CSV format
 
-### Training Block CSV
-```
+### Block Week 1 (or standalone plan)
+
+```csv
 Day,Exercise,Sets,Reps,BaseLoadMin,BaseLoadMax,RPE
 1,Squat,3,5,100,110,8
 1,Bench Press,3,5,80,90,8
 2,Deadlift,3,5,120,130,8
 ```
 
-### Legacy Workout CSV
-```
-Day,Exercise,Sets,Reps,BaseLoadMin,BaseLoadMax,RPE
-1,Squat,3,5,100,110,8
-1,Bench Press,3,5,80,90,8
-```
+For standalone/home uploads the same columns are used; the app uses `LoadMin`/`LoadMax` in the UI but the format is equivalent.
 
-## Project Structure
+## Project structure
 
 ```
 src/
-├── components/          # React components
-│   ├── Home.js         # Main landing page
-│   ├── BlockSelector.js # Training block list
-│   ├── BlockSetup.js   # Block creation
-│   ├── DayView.js      # Workout logging interface
-│   ├── History.js      # Workout history
-│   ├── WeekSelector.js # Week navigation
-│   ├── DayBuilder.js   # Manual workout builder
-│   └── ExerciseForm.js # Exercise input modal
-├── context/            # React context
+├── components/
+│   ├── Home.js          # Landing: CSV/manual input, standalone days
+│   ├── BlockSelector.js # List blocks, new block, delete
+│   ├── BlockSetup.js    # Create block (CSV / manual / copy)
+│   ├── DayView.js       # Log workout (sets, weight, reps, RPE)
+│   ├── WeekSelector.js  # Week tabs for a block
+│   ├── History.js       # Completed workouts list and detail
+│   ├── DayBuilder.js    # Day card + exercise list (manual builder)
+│   ├── ExerciseForm.js  # Add/edit exercise (DB search or free)
+│   └── FileUpload.js    # CSV file input
+├── context/
 │   └── WorkoutContext.js
-├── utils/              # Utility functions
-│   ├── workoutStorage.js # LocalStorage operations
-│   ├── blockProgression.js # Progressive overload calculations
-│   ├── csvParser.js    # CSV parsing
-│   └── blockCsvParser.js
-└── App.js              # Main app component
+├── services/
+│   └── api.js           # Backend API + ExerciseDB (body parts, exercises)
+├── utils/
+│   ├── workoutStorage.js    # localStorage
+│   ├── blockProgression.js  # Progressive overload math
+│   ├── apiTransformers.js   # Request/response shapes
+│   ├── csvParser.js         # Standalone CSV
+│   └── blockCsvParser.js    # Block Week 1 CSV
+├── App.js
+└── index.js
 ```
-
-## Features in Detail
-
-### Progressive Overload
-- Automatically calculates weight increases week-over-week
-- Rounds weights to nearest 2.5kg increment
-- Applies deload percentage in final week
-
-### Data Management
-- All data persisted in browser localStorage
-- Delete exercises, workouts, and blocks
-- Edit exercises within training blocks
-- Consistent error handling across all operations
-
-### Mobile-First Design
-- Large touch targets (minimum 44px)
-- Numeric keypads for number inputs
-- Responsive layouts for all screen sizes
-- Optimized for gym use
 
 ## Status
 
-✅ **Fully Functional** - All core features implemented and working
-
-The application is ready for use. All data is stored locally in your browser's localStorage.
+The app is fully usable with or without the backend. Blocks and workouts are stored in PostgreSQL when the backend is running; otherwise they are kept in localStorage.

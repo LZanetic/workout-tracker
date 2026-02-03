@@ -1,22 +1,21 @@
 # Workout Tracker Backend
 
-Spring Boot 3.2.x REST API backend for the workout tracking application.
+Spring Boot REST API for the workout tracker: training blocks, workout logging, and exercise deletion. The frontend uses this API when available and falls back to localStorage when it is not.
 
 ## Prerequisites
 
-- Java 17 or higher
+- Java 17+
 - Maven 3.6+
 - PostgreSQL 12+
 
 ## Setup
 
-1. **Create PostgreSQL Database:**
+1. **Create the database:**
    ```sql
    CREATE DATABASE workout_tracker;
    ```
 
-2. **Update Database Configuration:**
-   Edit `src/main/resources/application.yml` and update the database connection details if needed:
+2. **Configure connection** in `src/main/resources/application.yml` if needed:
    ```yaml
    spring:
      datasource:
@@ -25,111 +24,114 @@ Spring Boot 3.2.x REST API backend for the workout tracking application.
        password: postgres
    ```
 
-3. **Build the Project:**
+3. **Build and run:**
    ```bash
    mvn clean install
-   ```
-
-4. **Run the Application:**
-   ```bash
    mvn spring-boot:run
    ```
+   Or run the main class: `com.workouttracker.WorkoutTrackerApplication`.
 
-   Or run the main class: `com.workouttracker.WorkoutTrackerApplication`
+The API is served at **http://localhost:8080/api** (context path `/api`).
 
-## API Documentation
+## API documentation
 
-Once the application is running, access the Swagger UI at:
-- http://localhost:8080/api/swagger-ui.html
+- **Swagger UI:** http://localhost:8080/api/swagger-ui.html  
+- **OpenAPI JSON:** http://localhost:8080/api/api-docs  
 
-API documentation is also available at:
-- http://localhost:8080/api/api-docs
+## API endpoints
 
-## Project Structure
+Base URL: `http://localhost:8080/api`
+
+### Blocks (training block management)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET`  | `/blocks` | List all training blocks |
+| `GET`  | `/blocks/{id}` | Get block by ID (with weeks, days, exercises, prescribed sets) |
+| `GET`  | `/blocks/{blockId}/progress` | List completed workouts for a block |
+| `POST` | `/blocks` | Create a new block (with weeks/days/exercises/prescribed sets) |
+| `DELETE` | `/blocks/{id}` | Delete a block |
+
+### Workouts (logged workouts)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/workouts` | Log a completed workout (body: blockId, weekNumber, dayNumber, exercises with actual sets) |
+| `GET`  | `/workouts?blockId=&weekNumber=&dayNumber=` | Get a single logged workout by block/week/day |
+| `DELETE` | `/workouts?blockId=&weekNumber=&dayNumber=` | Delete a logged workout |
+
+### Exercises
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `DELETE` | `/exercises/{id}` | Delete an exercise (removes from all weeks in the block) |
+
+## Project structure
 
 ```
 src/main/java/com/workouttracker/
-├── config/          # Configuration classes (OpenAPI, etc.)
-├── controller/      # REST controllers
-├── service/         # Business logic layer
-├── repository/      # JPA repositories
-├── model/           # JPA entities and enums
-├── dto/             # Request/response DTOs
-├── mapper/          # MapStruct mappers
-└── exception/       # Exception handling
+├── config/           # CORS, OpenAPI/Swagger
+├── controller/       # REST controllers
+│   ├── BlockController.java      # /blocks
+│   ├── WorkoutController.java   # /workouts
+│   └── ExerciseController.java  # /exercises
+├── service/          # Business logic
+├── repository/       # JPA repositories
+├── model/            # JPA entities
+├── dto/              # Request/response DTOs
+├── mapper/           # MapStruct entity ↔ DTO
+├── exception/        # Global exception handling
+└── WorkoutTrackerApplication.java
 
 src/main/resources/
-├── application.yml  # Application configuration
-└── db/changelog/    # Liquibase database migrations
+├── application.yml
+└── db/changelog/     # Liquibase migrations
 ```
 
-## Database Migrations
+## Database
 
-Database schema is managed by Liquibase. Migrations are located in `src/main/resources/db/changelog/`.
+Schema is managed by **Liquibase**. Changelogs are under `src/main/resources/db/changelog/`.
 
-The initial schema includes:
-- `users` - User accounts
-- `training_blocks` - Training block definitions
-- `weeks` - Week definitions within blocks
-- `workout_days` - Individual workout days
-- `exercises` - Exercise definitions
-- `prescribed_sets` - Prescribed workout sets
-- `actual_sets` - Completed workout sets
+Main entities:
+- **training_blocks** – Block metadata (length, progression rate, deload rate)
+- **weeks** – Weeks belonging to a block
+- **workout_days** – Days within a week
+- **exercises** – Exercise definitions per day
+- **prescribed_sets** – Target sets/reps/load per exercise
+- **workouts** – Logged workout instances (block + week + day)
+- **actual_sets** – Logged weight/reps/RPE per set
 
-## API Endpoints
+There is no user/authentication layer; the app is single-user per database.
 
-### Users
-- `GET /api/users` - Get all users
-- `GET /api/users/{id}` - Get user by ID
-- `POST /api/users` - Create new user
-- `PUT /api/users/{id}` - Update user
-- `DELETE /api/users/{id}` - Delete user
+## Tech stack
 
-### Training Blocks
-- `GET /api/training-blocks` - Get all training blocks
-- `GET /api/training-blocks/{id}` - Get training block by ID
-- `GET /api/training-blocks/assigned-to/{userId}` - Get blocks assigned to user
-- `GET /api/training-blocks/created-by/{userId}` - Get blocks created by user
-- `POST /api/training-blocks` - Create new training block
-- `DELETE /api/training-blocks/{id}` - Delete training block
-
-### Actual Sets
-- `GET /api/actual-sets/exercise/{exerciseId}` - Get actual sets for exercise
-- `GET /api/actual-sets/{id}` - Get actual set by ID
-- `POST /api/actual-sets` - Create new actual set
-- `PUT /api/actual-sets/{id}` - Update actual set
-- `DELETE /api/actual-sets/{id}` - Delete actual set
-
-## Technologies
-
-- **Spring Boot 3.2.0** - Application framework
-- **Spring Data JPA** - Database access
-- **PostgreSQL** - Database
-- **Liquibase** - Database migrations
-- **MapStruct** - DTO mapping
-- **Lombok** - Boilerplate reduction
-- **SpringDoc OpenAPI** - API documentation
-- **Spring Validation** - Request validation
+- **Spring Boot 3.2** – Framework
+- **Spring Data JPA** – Persistence
+- **PostgreSQL** – Database
+- **Liquibase** – Migrations
+- **MapStruct** – DTO mapping
+- **Lombok** – Boilerplate reduction
+- **SpringDoc OpenAPI** – Swagger/OpenAPI docs
+- **Jakarta Validation** – Request validation
 
 ## Development
 
-### Running Tests
+**Tests:** Unit and controller tests for services and REST endpoints (blocks, workouts, exercises).
 ```bash
 mvn test
 ```
 
-### Building for Production
+**Package:**
 ```bash
 mvn clean package
 ```
+JAR: `target/workout-tracker-backend-1.0.0.jar`
 
-The JAR file will be created in `target/workout-tracker-backend-1.0.0.jar`
-
-### Running the JAR
+**Run JAR:**
 ```bash
 java -jar target/workout-tracker-backend-1.0.0.jar
 ```
 
+## Frontend integration
 
-
-
+The React app uses `REACT_APP_API_URL` (default `http://localhost:8080/api`) for all block and workout requests. If the backend is unreachable, the frontend stores data in localStorage only.

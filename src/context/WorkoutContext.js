@@ -1,6 +1,8 @@
 import { createContext, useContext, useState } from 'react';
 import { getWorkoutsByDay } from '../utils/workoutStorage';
 
+const STANDALONE_BLOCK_ID_KEY = 'workout_standalone_block_id';
+
 const WorkoutContext = createContext();
 
 export const useWorkout = () => {
@@ -13,19 +15,34 @@ export const useWorkout = () => {
 
 export const WorkoutProvider = ({ children }) => {
   // Legacy support for old day-based structure
-  // Load from localStorage on initialization
-  const [workoutsByDay, setWorkoutsByDay] = useState(() => {
-    return getWorkoutsByDay();
+  const [workoutsByDay, setWorkoutsByDay] = useState(() => getWorkoutsByDay());
+
+  // Standalone block id: one block used for legacy (no block structure) so same API as blocks
+  const [standaloneBlockId, setStandaloneBlockIdState] = useState(() => {
+    try {
+      const id = localStorage.getItem(STANDALONE_BLOCK_ID_KEY);
+      return id ? parseInt(id, 10) : null;
+    } catch {
+      return null;
+    }
   });
-  
-  // New block-based structure
+  const setStandaloneBlockId = (id) => {
+    setStandaloneBlockIdState(id);
+    try {
+      if (id != null) localStorage.setItem(STANDALONE_BLOCK_ID_KEY, String(id));
+      else localStorage.removeItem(STANDALONE_BLOCK_ID_KEY);
+    } catch {}
+  };
+
   const [currentBlock, setCurrentBlock] = useState(null);
   const [currentWeek, setCurrentWeek] = useState(null);
 
   return (
-    <WorkoutContext.Provider value={{ 
-      workoutsByDay, 
+    <WorkoutContext.Provider value={{
+      workoutsByDay,
       setWorkoutsByDay,
+      standaloneBlockId,
+      setStandaloneBlockId,
       currentBlock,
       setCurrentBlock,
       currentWeek,

@@ -1,0 +1,23 @@
+databaseChangeLog:
+  # Use raw SQL with IF EXISTS so migration succeeds whether or not user tables/constraints exist
+  - changeSet:
+      id: 008-drop-user-fk-from-training-blocks
+      author: workout-tracker
+      dbms: postgresql
+      changes:
+        - sql:
+            sql: |
+              ALTER TABLE training_blocks DROP CONSTRAINT IF EXISTS fk_training_blocks_created_by;
+              ALTER TABLE training_blocks DROP CONSTRAINT IF EXISTS fk_training_blocks_assigned_to;
+              DROP INDEX IF EXISTS idx_training_blocks_created_by_user_id;
+              DROP INDEX IF EXISTS idx_training_blocks_assigned_to_user_id;
+              ALTER TABLE training_blocks DROP COLUMN IF EXISTS created_by_user_id;
+              ALTER TABLE training_blocks DROP COLUMN IF EXISTS assigned_to_user_id;
+
+  - changeSet:
+      id: 009-drop-users-table
+      author: workout-tracker
+      dbms: postgresql
+      changes:
+        - sql:
+            sql: DROP TABLE IF EXISTS users;

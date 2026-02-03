@@ -112,8 +112,11 @@ export const clearTrainingBlocks = () => {
  */
 export const deleteTrainingBlock = (blockId) => {
   try {
+    const idNum = Number(blockId);
     const blocks = getTrainingBlocks();
-    const updatedBlocks = blocks.filter(block => block.blockId !== blockId);
+    const updatedBlocks = blocks.filter(
+      block => Number(block.blockId ?? block.id) !== idNum
+    );
     localStorage.setItem(BLOCKS_STORAGE_KEY, JSON.stringify(updatedBlocks));
   } catch (error) {
     console.error('Error deleting training block:', error);

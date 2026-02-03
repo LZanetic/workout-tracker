@@ -70,15 +70,11 @@ databaseChangeLog:
                   type: BIGINT
                   constraints:
                     nullable: false
-                    references: users(id)
-                    foreignKeyName: fk_training_blocks_created_by
               - column:
                   name: assigned_to_user_id
                   type: BIGINT
                   constraints:
                     nullable: false
-                    references: users(id)
-                    foreignKeyName: fk_training_blocks_assigned_to
               - column:
                   name: block_length
                   type: INTEGER
@@ -109,6 +105,18 @@ databaseChangeLog:
                   type: TIMESTAMP
                   constraints:
                     nullable: false
+        - addForeignKeyConstraint:
+            baseTableName: training_blocks
+            baseColumnNames: created_by_user_id
+            constraintName: fk_training_blocks_created_by
+            referencedTableName: users
+            referencedColumnNames: id
+        - addForeignKeyConstraint:
+            baseTableName: training_blocks
+            baseColumnNames: assigned_to_user_id
+            constraintName: fk_training_blocks_assigned_to
+            referencedTableName: users
+            referencedColumnNames: id
         - createIndex:
             tableName: training_blocks
             indexName: idx_training_blocks_created_by_user_id
@@ -140,8 +148,6 @@ databaseChangeLog:
                   type: BIGINT
                   constraints:
                     nullable: false
-                    references: training_blocks(id)
-                    foreignKeyName: fk_weeks_block
               - column:
                   name: week_number
                   type: INTEGER
@@ -162,6 +168,12 @@ databaseChangeLog:
                   type: DATE
                   constraints:
                     nullable: false
+        - addForeignKeyConstraint:
+            baseTableName: weeks
+            baseColumnNames: block_id
+            constraintName: fk_weeks_block
+            referencedTableName: training_blocks
+            referencedColumnNames: id
         - createIndex:
             tableName: weeks
             indexName: idx_weeks_block_id
@@ -187,8 +199,6 @@ databaseChangeLog:
                   type: BIGINT
                   constraints:
                     nullable: false
-                    references: weeks(id)
-                    foreignKeyName: fk_workout_days_week
               - column:
                   name: day_number
                   type: INTEGER
@@ -204,6 +214,12 @@ databaseChangeLog:
                   type: BOOLEAN
                   constraints:
                     nullable: false
+        - addForeignKeyConstraint:
+            baseTableName: workout_days
+            baseColumnNames: week_id
+            constraintName: fk_workout_days_week
+            referencedTableName: weeks
+            referencedColumnNames: id
         - createIndex:
             tableName: workout_days
             indexName: idx_workout_days_week_id
@@ -229,8 +245,6 @@ databaseChangeLog:
                   type: BIGINT
                   constraints:
                     nullable: false
-                    references: workout_days(id)
-                    foreignKeyName: fk_exercises_day
               - column:
                   name: name
                   type: VARCHAR(255)
@@ -246,6 +260,12 @@ databaseChangeLog:
                   type: INTEGER
                   constraints:
                     nullable: false
+        - addForeignKeyConstraint:
+            baseTableName: exercises
+            baseColumnNames: day_id
+            constraintName: fk_exercises_day
+            referencedTableName: workout_days
+            referencedColumnNames: id
         - createIndex:
             tableName: exercises
             indexName: idx_exercises_day_id
@@ -271,8 +291,6 @@ databaseChangeLog:
                   type: BIGINT
                   constraints:
                     nullable: false
-                    references: exercises(id)
-                    foreignKeyName: fk_prescribed_sets_exercise
               - column:
                   name: set_number
                   type: INTEGER
@@ -307,6 +325,12 @@ databaseChangeLog:
                   type: BOOLEAN
                   constraints:
                     nullable: false
+        - addForeignKeyConstraint:
+            baseTableName: prescribed_sets
+            baseColumnNames: exercise_id
+            constraintName: fk_prescribed_sets_exercise
+            referencedTableName: exercises
+            referencedColumnNames: id
         - createIndex:
             tableName: prescribed_sets
             indexName: idx_prescribed_sets_exercise_id
@@ -332,13 +356,9 @@ databaseChangeLog:
                   type: BIGINT
                   constraints:
                     nullable: false
-                    references: exercises(id)
-                    foreignKeyName: fk_actual_sets_exercise
               - column:
                   name: prescribed_set_id
                   type: BIGINT
-                  references: prescribed_sets(id)
-                  foreignKeyName: fk_actual_sets_prescribed_set
               - column:
                   name: set_number
                   type: INTEGER
@@ -367,6 +387,18 @@ databaseChangeLog:
               - column:
                   name: completed_at
                   type: TIMESTAMP
+        - addForeignKeyConstraint:
+            baseTableName: actual_sets
+            baseColumnNames: exercise_id
+            constraintName: fk_actual_sets_exercise
+            referencedTableName: exercises
+            referencedColumnNames: id
+        - addForeignKeyConstraint:
+            baseTableName: actual_sets
+            baseColumnNames: prescribed_set_id
+            constraintName: fk_actual_sets_prescribed_set
+            referencedTableName: prescribed_sets
+            referencedColumnNames: id
         - createIndex:
             tableName: actual_sets
             indexName: idx_actual_sets_exercise_id
@@ -385,7 +417,3 @@ databaseChangeLog:
             columns:
               - column:
                   name: completed_at
-
-
-
-

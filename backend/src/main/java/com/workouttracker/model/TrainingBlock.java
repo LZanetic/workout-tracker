@@ -23,14 +23,6 @@ public class TrainingBlock {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
     
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "created_by_user_id", nullable = false)
-    private User createdBy;
-    
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "assigned_to_user_id", nullable = false)
-    private User assignedTo;
-    
     @Column(name = "block_length", nullable = false)
     private Integer blockLength;
     

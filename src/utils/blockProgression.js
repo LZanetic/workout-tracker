@@ -58,20 +58,21 @@ export const generateBlockWeeks = (week1Data, blockLength, progressionRate = 0.0
       week.days[dayNum] = dayExercises.map(exercise => {
         const newExercise = { ...exercise };
 
-        // Calculate new loads for this week
-        if (exercise.BaseLoadMin) {
+        // Calculate new loads for this week (include 0 so weight is saved correctly)
+        const baseMin = exercise.BaseLoadMin != null ? Number(exercise.BaseLoadMin) : null;
+        const baseMax = exercise.BaseLoadMax != null ? Number(exercise.BaseLoadMax) : null;
+        if (baseMin != null && Number.isFinite(baseMin)) {
           newExercise.LoadMin = calculateWeekWeight(
-            exercise.BaseLoadMin,
+            baseMin,
             weekNum,
             progressionRate,
             deloadRate,
             blockLength
           );
         }
-
-        if (exercise.BaseLoadMax) {
+        if (baseMax != null && Number.isFinite(baseMax)) {
           newExercise.LoadMax = calculateWeekWeight(
-            exercise.BaseLoadMax,
+            baseMax,
             weekNum,
             progressionRate,
             deloadRate,

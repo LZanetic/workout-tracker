@@ -14,12 +14,6 @@ import java.math.BigDecimal;
 @AllArgsConstructor
 @Builder
 public class CreateTrainingBlockRequest {
-    @NotNull(message = "Created by user ID is required")
-    private Long createdByUserId;
-    
-    @NotNull(message = "Assigned to user ID is required")
-    private Long assignedToUserId;
-    
     @NotNull(message = "Block length is required")
     @Positive(message = "Block length must be positive")
     private Integer blockLength;

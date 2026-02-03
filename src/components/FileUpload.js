@@ -45,7 +45,7 @@ const FileUpload = ({ onFileUpload, onFileSelect }) => {
       <div className="mb-4">
         <label
           htmlFor="csv-upload"
-          className="block text-sm font-medium text-gray-700 mb-2"
+          className="block text-sm font-medium text-gray-300 mb-2"
         >
           Upload Workout CSV File
         </label>
@@ -54,21 +54,21 @@ const FileUpload = ({ onFileUpload, onFileSelect }) => {
           type="file"
           accept=".csv"
           onChange={handleFileChange}
-          className="block w-full text-sm text-gray-500
+          className="block w-full text-sm text-gray-400
             file:mr-4 file:py-2 file:px-4
             file:rounded-lg file:border-0
             file:text-sm file:font-semibold
-            file:bg-blue-50 file:text-blue-700
-            hover:file:bg-blue-100
+            file:bg-amber-500 file:text-gray-900
+            hover:file:bg-amber-400
             cursor-pointer"
         />
       </div>
       {error && (
-        <div className="mt-2 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+        <div className="mt-2 p-3 bg-red-900/30 border border-red-700 rounded-xl text-red-300 text-sm">
           {error}
         </div>
       )}
-      <p className="text-xs text-gray-500 mt-2">
+      <p className="text-xs text-gray-400 mt-2">
         Expected format: Day,Exercise,Sets,Reps,BaseLoadMin,BaseLoadMax,RPE
       </p>
     </div>

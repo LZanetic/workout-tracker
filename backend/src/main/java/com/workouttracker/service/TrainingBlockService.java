@@ -18,7 +18,6 @@ import java.util.stream.Collectors;
 public class TrainingBlockService {
     
     private final TrainingBlockRepository trainingBlockRepository;
-    private final UserRepository userRepository;
     private final TrainingBlockMapper trainingBlockMapper;
     
     public List<TrainingBlockDto> getAllTrainingBlocks() {
@@ -33,28 +32,8 @@ public class TrainingBlockService {
         return trainingBlockMapper.toDto(block);
     }
     
-    public List<TrainingBlockDto> getTrainingBlocksByAssignedUser(Long userId) {
-        return trainingBlockRepository.findByAssignedToId(userId).stream()
-                .map(trainingBlockMapper::toDto)
-                .collect(Collectors.toList());
-    }
-    
-    public List<TrainingBlockDto> getTrainingBlocksByCreatedUser(Long userId) {
-        return trainingBlockRepository.findByCreatedById(userId).stream()
-                .map(trainingBlockMapper::toDto)
-                .collect(Collectors.toList());
-    }
-    
     public TrainingBlockDto createTrainingBlock(CreateTrainingBlockRequest request) {
-        User createdBy = userRepository.findById(request.getCreatedByUserId())
-                .orElseThrow(() -> new ResourceNotFoundException("User not found with id: " + request.getCreatedByUserId()));
-        
-        User assignedTo = userRepository.findById(request.getAssignedToUserId())
-                .orElseThrow(() -> new ResourceNotFoundException("User not found with id: " + request.getAssignedToUserId()));
-        
         TrainingBlock block = TrainingBlock.builder()
-                .createdBy(createdBy)
-                .assignedTo(assignedTo)
                 .blockLength(request.getBlockLength())
                 .progressionRate(request.getProgressionRate())
                 .deloadRate(request.getDeloadRate())
@@ -74,14 +53,7 @@ public class TrainingBlockService {
     }
     
     public TrainingBlockDto createBlockWithWeeks(CreateBlockRequest request) {
-        // For now, we'll use a default user (ID 1) if users exist, otherwise create a simple block
-        // In a real app, you'd get this from security context or require it in the request
-        User defaultUser = userRepository.findById(1L)
-                .orElseThrow(() -> new ResourceNotFoundException("Default user not found. Please create a user first."));
-        
         TrainingBlock block = TrainingBlock.builder()
-                .createdBy(defaultUser)
-                .assignedTo(defaultUser)
                 .blockLength(request.getBlockLength())
                 .progressionRate(request.getProgressionRate())
                 .deloadRate(request.getDeloadRate())

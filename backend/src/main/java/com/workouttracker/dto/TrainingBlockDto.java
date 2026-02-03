@@ -15,10 +15,6 @@ import java.util.List;
 @Builder
 public class TrainingBlockDto {
     private Long id;
-    private Long createdByUserId;
-    private String createdByName;
-    private Long assignedToUserId;
-    private String assignedToName;
     private Integer blockLength;
     private BigDecimal progressionRate;
     private BigDecimal deloadRate;
