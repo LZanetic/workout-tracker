@@ -29,7 +29,7 @@
     "cap:sync": "npm run build && npx cap sync",
     "cap:open:android": "npx cap open android",
     "predeploy": "npm run build",
-    "deploy": "gh-pages -d build"
+    "deploy": "npx gh-pages -d build"
   },
   "devDependencies": {
     "@capacitor/cli": "^6.1.2",

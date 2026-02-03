@@ -66,7 +66,7 @@ A mobile-first workout tracking app built with React. Create training blocks, lo
    ```bash
    npm start
    ```
-   Open [http://localhost:3000](http://localhost:3000).
+   Open [http://localhost:3000](http://localhost:3000). To match GitHub Pages (app at `/workout-tracker`), set `PUBLIC_URL=/workout-tracker` in `.env` and open [http://localhost:3000/workout-tracker](http://localhost:3000/workout-tracker).
 
 3. **(Optional)** Run the backend so blocks and workouts are stored in PostgreSQL (see [backend/README.md](backend/README.md)). If the backend is not running, the app uses localStorage only.
 

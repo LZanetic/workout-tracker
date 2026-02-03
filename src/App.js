@@ -24,10 +24,10 @@ function App() {
     );
   }
 
-  // For GitHub Pages: app is at https://<user>.github.io/<repo>/ so Router needs basename (CRA sets PUBLIC_URL from homepage)
+  // App lives at /workout-tracker (GitHub Pages and local dev when homepage is set) so Router uses basename
   const pub = process.env.PUBLIC_URL || '';
-  const basePath = pub.startsWith('http') ? new URL(pub).pathname.replace(/\/$/, '') : '';
-  const basename = typeof window !== 'undefined' && window.location.hostname === 'localhost' ? '' : basePath;
+  const basePath = pub.startsWith('http') ? new URL(pub).pathname.replace(/\/$/, '') : (pub || '').replace(/\/$/, '');
+  const basename = basePath || '';
 
   return (
     <WorkoutProvider>
