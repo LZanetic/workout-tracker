@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Barbell, matches web app favicon (stepped plates) -->
+    <path
+        android:pathData="M14,47 L14,61"
+        android:strokeWidth="5"
+        android:strokeColor="#F59E0B"
+        android:fillColor="@android:color/transparent"/>
+    <path
+        android:pathData="M20,41 L20,68"
+        android:strokeWidth="5"
+        android:strokeColor="#F59E0B"
+        android:fillColor="@android:color/transparent"/>
+    <path
+        android:pathData="M27,34 L27,74"
+        android:strokeWidth="5"
+        android:strokeColor="#F59E0B"
+        android:fillColor="@android:color/transparent"/>
+    <path
+        android:pathData="M34,54 L74,54"
+        android:strokeWidth="5"
+        android:strokeColor="#F59E0B"
+        android:fillColor="@android:color/transparent"/>
+    <path
+        android:pathData="M81,34 L81,74"
+        android:strokeWidth="5"
+        android:strokeColor="#F59E0B"
+        android:fillColor="@android:color/transparent"/>
+    <path
+        android:pathData="M88,41 L88,68"
+        android:strokeWidth="5"
+        android:strokeColor="#F59E0B"
+        android:fillColor="@android:color/transparent"/>
+    <path
+        android:pathData="M95,47 L95,61"
+        android:strokeWidth="5"
+        android:strokeColor="#F59E0B"
+        android:fillColor="@android:color/transparent"/>
+</vector>
