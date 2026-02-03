@@ -1,8 +1,0 @@
-{
-  "appId": "com.workouttracker.app",
-  "appName": "Workout Tracker",
-  "webDir": "build",
-  "server": {
-    "androidScheme": "https"
-  }
-}
